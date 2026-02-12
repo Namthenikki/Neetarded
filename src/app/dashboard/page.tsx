@@ -30,33 +30,32 @@ export default function DashboardPage() {
     }
 
     setLoading(true);
-
+    
     // Fetch past attempts (one-time fetch)
     const fetchAttempts = async () => {
-      try {
-        const attemptsQuery = query(
-          collection(db, "attempts"),
-          where("studentId", "==", user.studentId),
-          orderBy("completedAt", "desc")
-        );
-        const attemptsSnapshot = await getDocs(attemptsQuery);
-        const studentAttempts = attemptsSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
-          } as QuizAttempt;
-        });
-        setAttempts(studentAttempts);
-      } catch (error) {
-        console.error("Error fetching past attempts:", error);
-      }
+        try {
+            const attemptsQuery = query(
+              collection(db, "attempts"),
+              where("studentId", "==", user.studentId),
+              orderBy("completedAt", "desc")
+            );
+            const attemptsSnapshot = await getDocs(attemptsQuery);
+            const studentAttempts = attemptsSnapshot.docs.map((doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                ...data,
+                completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+              } as QuizAttempt;
+            });
+            setAttempts(studentAttempts);
+        } catch (error) {
+            console.error("Error fetching past attempts:", error);
+        }
     };
-
-    fetchAttempts().finally(() => {
-      // We set loading to false only after the assignments listener has its first run
-    });
+    
+    // We will fetch attempts first, then set up the listener for assignments.
+    fetchAttempts();
 
     // Set up real-time listener for new assignments
     console.log("Current Student ID:", user.studentId);
@@ -202,5 +201,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
