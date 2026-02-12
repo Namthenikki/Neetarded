@@ -1,3 +1,4 @@
+
 export interface QuizSettings {
   duration: number; // in minutes
   positiveMarks: number;
@@ -32,6 +33,21 @@ export interface Quiz {
   settings: QuizSettings;
   structure: QuizStructure;
   isPublished: boolean;
-  createdAt: Date;
+  createdAt: any; // Allow Firestore Timestamp
   ownerId: string;
+}
+
+
+export interface QuizAttempt {
+  id?: string;
+  quizId: string;
+  userId: string;
+  userName: string;
+  answers: { [questionNumber: number]: string };
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  incorrectAnswers: number;
+  unattempted: number;
+  completedAt: Date;
 }
