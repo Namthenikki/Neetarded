@@ -29,36 +29,7 @@ export default function DashboardPage() {
       return;
     }
 
-    setLoading(true);
-    
-    // Fetch past attempts (one-time fetch)
-    const fetchAttempts = async () => {
-        try {
-            const attemptsQuery = query(
-              collection(db, "attempts"),
-              where("studentId", "==", user.studentId),
-              orderBy("completedAt", "desc")
-            );
-            const attemptsSnapshot = await getDocs(attemptsQuery);
-            const studentAttempts = attemptsSnapshot.docs.map((doc) => {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                ...data,
-                completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
-              } as QuizAttempt;
-            });
-            setAttempts(studentAttempts);
-        } catch (error) {
-            console.error("Error fetching past attempts:", error);
-        }
-    };
-    
-    // We will fetch attempts first, then set up the listener for assignments.
-    fetchAttempts();
-
-    // Set up real-time listener for new assignments
-    console.log("Current Student ID:", user.studentId);
+    // Set up real-time listener for new assignments. This will update the UI whenever a new quiz is assigned.
     const assignmentsQuery = query(
       collection(db, "assigned_quizzes"),
       where("studentId", "==", user.studentId),
@@ -83,11 +54,37 @@ export default function DashboardPage() {
         .sort((a, b) => b.assignedAt.toDate().getTime() - a.assignedAt.toDate().getTime());
       
       setAssignments(validAssignments);
-      setLoading(false); // End loading after both fetches are initiated/done
     }, (error) => {
       console.error("Error with assignments listener:", error);
-      setLoading(false);
     });
+
+    // Fetch past attempts. This is a one-time fetch that controls the main loading state of the page.
+    const fetchAttempts = async () => {
+        setLoading(true);
+        try {
+            const attemptsQuery = query(
+              collection(db, "attempts"),
+              where("studentId", "==", user.studentId),
+              orderBy("completedAt", "desc")
+            );
+            const attemptsSnapshot = await getDocs(attemptsQuery);
+            const studentAttempts = attemptsSnapshot.docs.map((doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                ...data,
+                completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+              } as QuizAttempt;
+            });
+            setAttempts(studentAttempts);
+        } catch (error) {
+            console.error("Error fetching past attempts:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    fetchAttempts();
 
     // Cleanup listener on component unmount
     return () => {
