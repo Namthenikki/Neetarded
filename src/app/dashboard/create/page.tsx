@@ -237,17 +237,25 @@ export default function CreateQuizPage() {
         title,
         settings,
         structure,
-        isPublished: false, // Always publish as false initially
+        isPublished: false,
         createdAt: serverTimestamp(),
         ownerId: user.uid,
       };
       
-      console.log("Saving Quiz Payload:", quizPayload);
+      console.log("Attempting to save to 'quizzes' collection...", quizPayload);
 
       await new Promise(res => setTimeout(res, 500));
       setUploadProgress(50);
       
-      const docRef = await addDoc(collection(db, "quizzes"), quizPayload);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Database Connection Timeout. Check your internet or Firebase Rules.")), 5000)
+      );
+
+      const docRef = await Promise.race([
+        addDoc(collection(db, "quizzes"), quizPayload),
+        timeoutPromise
+      ]) as any; 
+
       // We don't await this secondary write for UI feedback speed
       setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
 
@@ -256,16 +264,17 @@ export default function CreateQuizPage() {
 
       await new Promise(res => setTimeout(res, 500));
       setQuizId(docRef.id);
-      setIsReady(true); // Triggers Mission Control modal
+      setIsReady(true);
+      setIsPorting(false);
 
     } catch (error: any) {
-      console.error("Finalize failed:", error);
-      alert("Error finalizing quiz: " + error.message);
-    } finally {
-      setIsPorting(false); // Hide porting modal
-      // We don't reset progress, so the full bar is visible before the next modal
+      console.error("SAVE FAILED:", error);
+      alert("SAVE FAILED: " + error.message);
+      setIsPorting(false);
+      setUploadProgress(0);
     }
   };
+
 
   const handleStartProtocol = () => {
     if (!quizId) return;
@@ -583,5 +592,7 @@ export default function CreateQuizPage() {
     </div>
   );
 }
+
+    
 
     
