@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, orderBy, getDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, getDoc, doc, onSnapshot } from "firebase/firestore";
 import { type QuizAttempt, type AssignedQuiz, type Quiz } from "@/types/quiz";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -29,54 +29,73 @@ export default function DashboardPage() {
       return;
     }
 
-    async function fetchData() {
+    let isMounted = true;
+    let unsubscribeAssignments: () => void = () => {};
+
+    async function fetchInitialData() {
+      if (!user || !isMounted) return;
       setLoading(true);
       try {
-        // Fetch Attempts
+        // Fetch past attempts (one-time fetch)
         const attemptsQuery = query(
           collection(db, "attempts"),
           where("studentId", "==", user.studentId),
           orderBy("completedAt", "desc")
         );
         const attemptsSnapshot = await getDocs(attemptsQuery);
-        const studentAttempts = attemptsSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
-          } as QuizAttempt;
-        });
-        setAttempts(studentAttempts);
+        if (isMounted) {
+          const studentAttempts = attemptsSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+            } as QuizAttempt;
+          });
+          setAttempts(studentAttempts);
+        }
 
-        // Fetch Assignments (The "Double-Fetch")
+        // Set up real-time listener for new assignments
         const assignmentsQuery = query(
           collection(db, "assigned_quizzes"),
           where("studentId", "==", user.studentId),
-          where("status", "==", "pending"),
-          orderBy("assignedAt", "desc")
+          where("status", "==", "pending")
         );
-        const assignmentsSnapshot = await getDocs(assignmentsQuery);
-        const pendingAssignments: (AssignedQuiz & { quiz: Quiz })[] = [];
-        for (const assignmentDoc of assignmentsSnapshot.docs) {
-          const assignmentData = {id: assignmentDoc.id, ...assignmentDoc.data()} as AssignedQuiz;
-          const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
-          if (quizDoc.exists()) {
-            pendingAssignments.push({
-              ...assignmentData,
-              quiz: quizDoc.data() as Quiz
-            });
+        
+        unsubscribeAssignments = onSnapshot(assignmentsQuery, async (snapshot) => {
+          const promises = snapshot.docs.map(async (assignmentDoc) => {
+            const assignmentData = { id: assignmentDoc.id, ...assignmentDoc.data() } as AssignedQuiz;
+            const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
+            if (quizDoc.exists()) {
+              return { ...assignmentData, quiz: quizDoc.data() as Quiz };
+            }
+            return null;
+          });
+
+          const results = await Promise.all(promises);
+          if (isMounted) {
+            const validAssignments = results
+              .filter((a): a is AssignedQuiz & { quiz: Quiz } => a !== null)
+              .sort((a, b) => b.assignedAt.toDate().getTime() - a.assignedAt.toDate().getTime());
+            setAssignments(validAssignments);
           }
-        }
-        setAssignments(pendingAssignments);
+        });
 
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
-    fetchData();
+
+    fetchInitialData();
+
+    return () => {
+      isMounted = false;
+      unsubscribeAssignments();
+    };
   }, [user, authLoading, router]);
 
   if (loading || authLoading) {
