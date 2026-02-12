@@ -31,10 +31,12 @@ export default function QuizStatsPage() {
   const [quizTitle, setQuizTitle] = useState("");
 
   useEffect(() => {
-    async function fetchAttempts() {
-      if (!user || !quizId) return;
+    if (authLoading || !user) return;
+
+    async function fetchStats() {
       if (user.role !== 'admin') {
           logout();
+          router.replace('/login');
           return;
       }
       setLoading(true);
@@ -48,12 +50,13 @@ export default function QuizStatsPage() {
             return;
         }
 
-        const q = query(
+        // Primary query with ordering
+        const primaryQuery = query(
           collection(db, "attempts"),
           where("quizId", "==", quizId),
           orderBy("score", "desc")
         );
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(primaryQuery);
         
         const quizAttempts = querySnapshot.docs.map((doc) => {
           const data = doc.data() as QuizAttempt;
@@ -65,16 +68,39 @@ export default function QuizStatsPage() {
         });
 
         setAttempts(quizAttempts);
+        console.log("Fetched attempts with ordering:", quizAttempts.length);
+
       } catch (error) {
-        console.error("Error fetching attempts:", error);
+        console.warn("Primary query failed (likely missing index). Retrying without ordering. Error:", error);
+        // Fallback query without ordering
+        try {
+            const fallbackQuery = query(
+              collection(db, "attempts"),
+              where("quizId", "==", quizId)
+            );
+            const fallbackSnapshot = await getDocs(fallbackQuery);
+            const quizAttempts = fallbackSnapshot.docs.map((doc) => {
+              const data = doc.data() as QuizAttempt;
+              return {
+                id: doc.id,
+                ...data,
+                completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+              };
+            }).sort((a, b) => b.score - a.score); // Manual sorting
+
+            setAttempts(quizAttempts);
+            console.log("Fetched attempts with fallback and manual sort:", quizAttempts.length);
+
+        } catch (fallbackError) {
+            console.error("Error fetching attempts with fallback:", fallbackError);
+        }
+
       } finally {
         setLoading(false);
       }
     }
 
-    if (!authLoading) {
-      fetchAttempts();
-    }
+    fetchStats();
   }, [user, authLoading, quizId, router, logout]);
 
   if (loading || authLoading) {
