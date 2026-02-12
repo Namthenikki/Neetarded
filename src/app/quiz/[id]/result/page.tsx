@@ -14,7 +14,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { type QuizAttempt, type Quiz, type Question } from '@/types/quiz';
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { PieChart, Pie, Cell, ResponsiveContainer, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Bar, BarChart as RechartsBarChart, XAxis, YAxis, Tooltip } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -29,6 +29,7 @@ interface FlatQuestion extends Question {
 // --- Internal Components for UI Zones ---
 
 const VitalSigns = ({ analysis }: { analysis: any }) => {
+  if (!analysis) return null;
   const scorePercentage = (analysis.score / analysis.maxScore) * 100;
   const scoreColor = scorePercentage > 80 ? 'text-green-500' : scorePercentage > 50 ? 'text-yellow-500' : 'text-red-500';
 
@@ -36,7 +37,7 @@ const VitalSigns = ({ analysis }: { analysis: any }) => {
     { name: 'Accuracy', value: analysis.accuracy },
     { name: 'Remaining', value: 100 - analysis.accuracy },
   ];
-  const GAUGE_COLORS = ['#6750A4', '#F2F4F7'];
+  const GAUGE_COLORS = ['hsl(var(--primary))', 'hsl(var(--muted))'];
 
   return (
     <Card className="shadow-lg">
@@ -134,14 +135,14 @@ const SubjectPerformanceChart = ({ data }: { data: any[] }) => {
         <CardDescription>Your accuracy breakdown by subject.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div style={{ width: '100%', minHeight: '300px' }}>
+        <div className="h-[300px] w-full">
              <ResponsiveContainer>
-                <BarChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                <RechartsBarChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                     <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted))' }} />
                     <Bar dataKey="accuracy" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                </RechartsBarChart>
             </ResponsiveContainer>
         </div>
       </CardContent>
@@ -174,8 +175,8 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                 <CardDescription>A detailed review of every question.</CardDescription>
             </CardHeader>
             <CardContent>
-                <Tabs value={filter} onValueChange={setFilter} className="w-full sticky top-0 bg-background z-10 py-2">
-                    <TabsList className="grid w-full grid-cols-3">
+                <Tabs value={filter} onValueChange={setFilter} className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
                         <TabsTrigger value="all">All</TabsTrigger>
                         <TabsTrigger value="incorrect">Mistakes</TabsTrigger>
                         <TabsTrigger value="skipped">Skipped</TabsTrigger>
@@ -198,41 +199,32 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                                         const userAnswerId = attempt.answers[q.questionNumber];
                                         const isCorrect = opt.id === q.correctOptionId;
                                         const isSelected = opt.id === userAnswerId;
-                                        
-                                        let variant: "default" | "destructive" | "secondary" | "outline" | "ghost" | "link" | null = "outline";
-                                        let icon = null;
-
-                                        if (isCorrect) {
-                                            variant = "default"; // Greenish in theme
-                                            icon = <Check className="h-4 w-4" />;
-                                        }
-                                        if (isSelected && !isCorrect) {
-                                            variant = "destructive";
-                                            icon = <X className="h-4 w-4" />;
-                                        }
 
                                         return (
                                             <Button
                                                 key={opt.id}
-                                                variant={variant}
-                                                className={cn("w-full h-auto min-h-[44px] justify-between text-left p-3 text-sm whitespace-normal", {
-                                                    "bg-green-600/20 border-green-600 text-green-800 hover:bg-green-600/30": isCorrect,
-                                                    "bg-red-500/20 border-red-500 text-red-800 hover:bg-red-500/30": isSelected && !isCorrect,
+                                                variant="outline"
+                                                className={cn("w-full h-auto min-h-[44px] justify-between text-left p-3 text-sm whitespace-normal relative", {
+                                                    "bg-green-600/20 border-green-600 text-green-900 dark:text-green-200 font-semibold": isCorrect,
+                                                    "bg-red-500/20 border-red-500 text-red-900 dark:text-red-200": isSelected && !isCorrect,
                                                     "bg-muted/50": !isSelected && !isCorrect,
                                                 })}
                                             >
-                                               <span className="font-semibold mr-2">{opt.id}.</span> {opt.text}
-                                               {isSelected && icon}
+                                               <div><span className="font-semibold mr-2">{opt.id}.</span> {opt.text}</div>
+                                               {isSelected && !isCorrect && <X className="h-4 w-4 ml-2" />}
+                                               {isCorrect && <Check className="h-4 w-4 ml-2" />}
                                             </Button>
                                         )
                                     })}
                                 </div>
-                                <div className="mt-4 p-3 bg-accent/30 rounded-lg">
-                                    <p className="text-sm font-semibold text-accent-foreground flex items-center gap-2"><BrainCircuit className="h-4 w-4"/> AI Analysis</p>
-                                    <p className="text-xs text-accent-foreground/80 mt-1">
-                                        {q.explanation || 'Detailed analysis coming soon...'}
-                                    </p>
-                                </div>
+                                {(q.explanation) && (
+                                  <div className="mt-4 p-3 bg-accent/30 rounded-lg">
+                                      <p className="text-sm font-semibold text-accent-foreground flex items-center gap-2"><BrainCircuit className="h-4 w-4"/> AI Analysis</p>
+                                      <p className="text-xs text-accent-foreground/80 mt-1">
+                                          {q.explanation}
+                                      </p>
+                                  </div>
+                                )}
                             </CardContent>
                          </Card>
                     ))}
@@ -265,10 +257,10 @@ export default function ResultPage() {
                 return;
             }
             try {
+                setLoading(true);
                 const attemptDoc = await getDoc(doc(db, "attempts", attemptId));
                 if (!attemptDoc.exists() || attemptDoc.data().userId !== user.uid) {
                     setError("Attempt not found or you do not have permission to view it.");
-                    setLoading(false);
                     return;
                 }
                 const attemptData = attemptDoc.data() as QuizAttempt;
@@ -276,7 +268,6 @@ export default function ResultPage() {
                 const quizDoc = await getDoc(doc(db, "quizzes", attemptData.quizId));
                 if (!quizDoc.exists()) {
                     setError("Associated quiz not found.");
-                    setLoading(false);
                     return;
                 }
 
@@ -287,7 +278,10 @@ export default function ResultPage() {
                 console.error("Error fetching results:", e);
                 setError(e.message || "An unknown error occurred.");
             } finally {
-                setLoading(false);
+                // Simulate analysis time
+                setTimeout(() => {
+                    setLoading(false);
+                }, 1500);
             }
         }
         fetchResults();
@@ -355,7 +349,7 @@ export default function ResultPage() {
             accuracy,
             timeTaken: {
                 minutes: Math.floor(attempt.timeTaken / 60),
-                seconds: attempt.timeTaken % 60,
+                seconds: Math.floor(attempt.timeTaken % 60),
             },
             stats: {
                 correct,
@@ -368,10 +362,10 @@ export default function ResultPage() {
     
     if (loading) {
         return (
-            <div className="p-4 md:p-8 space-y-6">
-                <Skeleton className="h-64 w-full" />
-                <Skeleton className="h-80 w-full" />
-                <Skeleton className="h-96 w-full" />
+            <div className="flex h-screen w-full flex-col items-center justify-center bg-background text-center p-4">
+                <Loader2 className="h-12 w-12 text-primary animate-spin mb-4"/>
+                <h1 className="text-2xl font-bold text-foreground">Analyzing Results...</h1>
+                <p className="text-muted-foreground">Please wait while we generate your performance report.</p>
             </div>
         );
     }
@@ -402,7 +396,7 @@ export default function ResultPage() {
             <SubjectPerformanceChart data={analysis.subjectPerformance} />
             {attempt && <QuestionReview flatQuestions={flatQuestions} attempt={attempt} />}
 
-            <Card className="shadow-lg sticky bottom-4 z-20">
+            <Card className="shadow-lg sticky bottom-4 z-20 bg-background/80 backdrop-blur-sm">
                 <CardContent className="p-4 flex flex-col md:flex-row items-center justify-center gap-4">
                     <Button variant="outline" className="w-full md:w-auto" asChild>
                        <Link href={`/quiz/${quizId}`}>
