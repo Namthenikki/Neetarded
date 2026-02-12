@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -75,49 +76,51 @@ export default function CreateQuizPage() {
   };
 
   const handleAddChapter = (sectionIndex: number) => {
-    const name = prompt("Enter chapter name:");
-    if (name) {
-      const newStructure = structure.map((section, index) => {
-        if (index === sectionIndex) {
-          // This is the section we want to modify.
-          // Create a new chapter.
-          const existingCodes = getAllBinaryCodes();
-          const newChapter: Chapter = {
-            name,
-            binaryCode: generateBinaryCode(existingCodes),
-            questions: [],
-          };
-          // Return a new section object with the new chapter added to its chapters array.
-          return {
-            ...section,
-            chapters: [...section.chapters, newChapter],
-          };
-        }
-        // Return other sections untouched.
-        return section;
-      });
-      setStructure(newStructure);
-    }
-  };
-
-
-  const handleRemoveChapter = (
-    sectionId: string,
-    chapterBinaryCode: string
-  ) => {
-    const newStructure = structure.map((section) => {
-      if (section.id === sectionId) {
+    const newStructure = structure.map((section, index) => {
+      if (index === sectionIndex) {
+        const existingCodes = getAllBinaryCodes();
+        const newChapter: Chapter = {
+          name: "", // Start with an empty name
+          binaryCode: generateBinaryCode(existingCodes),
+          questions: [],
+        };
         return {
           ...section,
-          chapters: section.chapters.filter(
-            (c) => c.binaryCode !== chapterBinaryCode
-          ),
+          chapters: [...section.chapters, newChapter],
         };
       }
       return section;
     });
     setStructure(newStructure);
   };
+
+  const handleUpdateChapter = (sectionIndex: number, chapterIndex: number, name: string) => {
+    const newStructure = structure.map((section, sIndex) => {
+      if (sIndex === sectionIndex) {
+        const newChapters = section.chapters.map((chapter, cIndex) => {
+          if (cIndex === chapterIndex) {
+            return { ...chapter, name: name };
+          }
+          return chapter;
+        });
+        return { ...section, chapters: newChapters };
+      }
+      return section;
+    });
+    setStructure(newStructure);
+  };
+
+  const handleRemoveChapter = (sectionIndex: number, chapterIndex: number) => {
+    const newStructure = structure.map((section, sIndex) => {
+      if (sIndex === sectionIndex) {
+        const newChapters = section.chapters.filter((_, cIndex) => cIndex !== chapterIndex);
+        return { ...section, chapters: newChapters };
+      }
+      return section;
+    });
+    setStructure(newStructure);
+  };
+
 
   const validateStructure = () => {
     const sectionIds = new Set<string>();
@@ -143,6 +146,14 @@ export default function CreateQuizPage() {
           variant: "destructive",
           title: "Duplicate Section ID",
           description: `Section ID "${section.id}" must be unique.`,
+        });
+        return false;
+      }
+      if (section.chapters.some(ch => !ch.name.trim())) {
+         toast({
+          variant: "destructive",
+          title: "Incomplete Chapter",
+          description: `Please provide a name for all chapters in section "${section.name}".`,
         });
         return false;
       }
@@ -238,7 +249,7 @@ export default function CreateQuizPage() {
         description: `Quiz "${title}" has been saved successfully.`,
       });
 
-      router.push("/dashboard/quizzes");
+      router.push("/dashboard");
     } catch (error) {
       console.error("Error saving draft:", error);
       toast({
@@ -345,15 +356,15 @@ export default function CreateQuizPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {structure.map((section, index) => (
-                <Card key={index} className="overflow-hidden bg-background">
+              {structure.map((section, sectionIndex) => (
+                <Card key={sectionIndex} className="overflow-hidden bg-background">
                   <CardHeader className="flex flex-row items-center justify-between bg-muted/30 p-3">
                     <div className="flex flex-1 items-center gap-4">
                       <Input
                         placeholder="Section Name (e.g., Physics)"
                         value={section.name}
                         onChange={(e) =>
-                          handleUpdateSection(index, "name", e.target.value)
+                          handleUpdateSection(sectionIndex, "name", e.target.value)
                         }
                         className="text-lg font-semibold border-0 focus-visible:ring-1"
                       />
@@ -361,7 +372,7 @@ export default function CreateQuizPage() {
                         placeholder="ID"
                         value={section.id}
                         onChange={(e) =>
-                          handleUpdateSection(index, "id", e.target.value)
+                          handleUpdateSection(sectionIndex, "id", e.target.value)
                         }
                         maxLength={3}
                         className="w-24 text-lg font-mono tracking-widest border-0 focus-visible:ring-1 uppercase"
@@ -370,57 +381,35 @@ export default function CreateQuizPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleRemoveSection(index)}
+                      onClick={() => handleRemoveSection(sectionIndex)}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {section.chapters.length > 0 ? (
-                       <ul className="space-y-2">
-                        {section.chapters.map((chapter) => (
-                          <li key={chapter.binaryCode}>
-                            <Accordion type="single" collapsible className="w-full border-b-0">
-                              <AccordionItem value={chapter.binaryCode} className="border-b-0">
-                                <AccordionTrigger className="hover:no-underline rounded-md hover:bg-muted/50 p-2 -mb-2">
-                                  <div className="flex flex-1 items-center justify-between pr-4">
-                                    <span className="font-normal">{chapter.name}</span>
-                                    <div className="flex items-center gap-2">
-                                      <code className="text-sm bg-muted px-2 py-1 rounded">
-                                        {chapter.binaryCode}
-                                      </code>
-                                      <Badge variant="secondary">{chapter.questions?.length || 0} Qs</Badge>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleRemoveChapter(section.id, chapter.binaryCode);
-                                        }}
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive/70" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionContent>
-                                  <div className="pl-4 pt-2 space-y-2 text-sm text-muted-foreground">
-                                    {chapter.questions && chapter.questions.length > 0 ? (
-                                      chapter.questions.map((q, i) => (
-                                        <div key={i} className="border-l-2 pl-2">
-                                          <p><strong>Q{q.questionNumber}:</strong> {q.text}</p>
-                                        </div>
-                                      ))
-                                    ) : (
-                                      <p className="py-4 text-center">No questions parsed for this chapter yet.</p>
-                                    )}
-                                  </div>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-                          </li>
+                     {section.chapters.length > 0 ? (
+                       <div className="space-y-3">
+                         <Label className="text-xs text-muted-foreground">Chapters</Label>
+                        {section.chapters.map((chapter, chapterIndex) => (
+                          <div key={chapter.binaryCode} className="flex items-center gap-2">
+                             <Input
+                                placeholder="Chapter name"
+                                value={chapter.name}
+                                onChange={(e) => handleUpdateChapter(sectionIndex, chapterIndex, e.target.value)}
+                              />
+                              <code className="text-sm bg-muted px-2 py-1 rounded">
+                                {chapter.binaryCode}
+                              </code>
+                               <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveChapter(sectionIndex, chapterIndex)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive/70" />
+                              </Button>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     ) : (
                       <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet. Click 'Add Chapter' to start.</p>
                     )}
@@ -428,7 +417,7 @@ export default function CreateQuizPage() {
                       variant="outline"
                       size="sm"
                       className="mt-4"
-                      onClick={() => handleAddChapter(index)}
+                      onClick={() => handleAddChapter(sectionIndex)}
                       disabled={!section.id}
                     >
                       <Plus className="mr-2 h-4 w-4" /> Add Chapter
@@ -510,6 +499,5 @@ export default function CreateQuizPage() {
       </Button>
     </div>
   );
-}
 
     
