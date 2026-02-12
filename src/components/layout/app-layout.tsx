@@ -14,7 +14,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isMobile) {
     return (
-      <div className="pb-16">
+      <div className="pb-20">
         <main>{children}</main>
         <BottomNav />
       </div>

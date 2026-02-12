@@ -62,7 +62,7 @@ export default function QuizzesPage() {
         </div>
         <Button asChild>
             <Link href="/dashboard/create">
-                <PlusCircle className="mr-2 h-4 w-4" />
+                <PlusCircle />
                 Create New
             </Link>
         </Button>
@@ -81,16 +81,16 @@ export default function QuizzesPage() {
               <CardContent className="flex-grow">
                  <div className="space-y-2 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
+                        <FileText />
                         <span>{quiz.structure.reduce((acc, s) => acc + s.chapters.reduce((cAcc, c) => cAcc + (c.questions?.length || 0), 0), 0)} questions</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
+                        <Clock />
                         <span>{quiz.settings.duration} minutes</span>
                     </div>
                  </div>
               </CardContent>
-              <CardFooter className="grid grid-cols-2 gap-2 pt-0">
+              <CardFooter className="grid grid-cols-2 gap-2">
                 <Button asChild className="w-full">
                   <Link href={`/quiz/${quiz.id}`}>
                     <Rocket /> Start

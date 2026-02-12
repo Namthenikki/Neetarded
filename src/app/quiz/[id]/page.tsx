@@ -5,21 +5,20 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { type Quiz, type Question, type SectionPerformance } from "@/types/quiz";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { type Quiz, type Question } from "@/types/quiz";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import { cn, generateUniqueId } from "@/lib/utils";
-import { Timer, AlertCircle, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, User as UserIcon } from "lucide-react";
+import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, X } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 
 type QuizStatus = 'loading' | 'needs_identity' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private';
-
 type AnswerMap = { [questionNumber: number]: string };
 
 interface FlatQuestion extends Question {
@@ -56,41 +55,44 @@ export default function QuizPage() {
           chapterName: chapter.name,
         }))
       )
-    ).sort((a,b) => a.questionNumber - b.questionNumber);
+    ).sort((a, b) => a.questionNumber - b.questionNumber);
   }, [quiz]);
-  
+
+  const progress = useMemo(() => {
+    if (flatQuestions.length === 0) return 0;
+    return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
+  }, [currentQuestionIndex, flatQuestions.length]);
+
   useEffect(() => {
-    // 1. Pre-flight check for student identity
     const storedId = localStorage.getItem('neetarded_student_id');
     const storedName = localStorage.getItem('neetarded_student_name');
 
-    if (user) { // If a creator is logged in, treat them as a test-taker but identify them
-        setStudentId(user.uid);
-        setStudentName(user.name);
-        setIsGuest(false);
-    } else if (storedId && storedName) { // If a guest has played before
-        setStudentId(storedId);
-        setStudentName(storedName);
-        setIsGuest(true);
-    } else { // New guest user
-        setIsGuest(true);
-        setStatus('needs_identity');
-        return; // Halt further execution until identity is established
+    if (user) {
+      setStudentId(user.uid);
+      setStudentName(user.name);
+      setIsGuest(false);
+    } else if (storedId && storedName) {
+      setStudentId(storedId);
+      setStudentName(storedName);
+      setIsGuest(true);
+    } else {
+      setIsGuest(true);
+      setStatus('needs_identity');
+      return;
     }
   }, [user]);
 
   useEffect(() => {
     async function fetchQuiz() {
-      if (!quizId || status === 'needs_identity') return;
+      if (!quizId || status === 'needs_identity' || !studentId) return;
       
       try {
         const quizDoc = await getDoc(doc(db, "quizzes", quizId));
         if (quizDoc.exists()) {
           const quizData = quizDoc.data() as Quiz;
-          // Access control: only published quizzes are public, owner can always access
           if (!quizData.isPublished && quizData.ownerId !== user?.uid) {
-              setStatus('private');
-              return;
+            setStatus('private');
+            return;
           }
           setQuiz(quizData);
           setTimeLeft(quizData.settings.duration * 60);
@@ -104,77 +106,57 @@ export default function QuizPage() {
       }
     }
     fetchQuiz();
-  }, [quizId, user, status]);
+  }, [quizId, user, status, studentId]);
 
   const handleBeginExam = () => {
     if (!studentName.trim()) {
-        alert("Please enter your name.");
-        return;
+      alert("Please enter your name.");
+      return;
     }
     const newId = `NT-${generateUniqueId()}`;
     setStudentId(newId);
     localStorage.setItem('neetarded_student_id', newId);
     localStorage.setItem('neetarded_student_name', studentName);
-    setStatus('loading'); // Go back to loading to trigger quiz fetch
+    setStatus('loading');
   }
 
   const handleSubmit = useCallback(async () => {
     if (status !== 'active' || !quiz || !studentId || !studentName) return;
     setStatus('submitting');
     
-    // --- Performance Calculation Engine ---
-    const sectionStats: { [key: string]: { correct: number, incorrect: number, total: number, name: string } } = {};
-    quiz.structure.forEach(s => {
-        sectionStats[s.id] = { correct: 0, incorrect: 0, total: 0, name: s.name };
-    });
-
     let correctAnswers = 0;
     let incorrectAnswers = 0;
     flatQuestions.forEach(q => {
-        sectionStats[q.sectionId].total++;
         const userAnswerId = answers[q.questionNumber];
         if (userAnswerId) {
-            if (userAnswerId === q.correctOptionId) {
-                correctAnswers++;
-                sectionStats[q.sectionId].correct++;
-            } else {
-                incorrectAnswers++;
-                sectionStats[q.sectionId].incorrect++;
-            }
+            if (userAnswerId === q.correctOptionId) correctAnswers++;
+            else incorrectAnswers++;
         }
     });
     
     const score = (correctAnswers * quiz.settings.positiveMarks) + (incorrectAnswers * quiz.settings.negativeMarks);
     const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
-    const sectionPerformance: SectionPerformance[] = Object.entries(sectionStats).map(([id, stats]) => {
-        const attempted = stats.correct + stats.incorrect;
-        return {
-            sectionId: id,
-            sectionName: stats.name,
-            totalQuestions: stats.total,
-            correct: stats.correct,
-            incorrect: stats.incorrect,
-            accuracy: attempted > 0 ? (stats.correct / attempted) * 100 : 0
-        }
-    });
-
     const attemptData = {
         quizId: quiz.id,
         quizTitle: quiz.title,
-        userId: user?.uid || 'guest', // Firebase auth ID or 'guest'
-        studentId,
-        studentName,
-        isGuest,
-        answers,
-        score,
-        correctAnswers,
-        incorrectAnswers,
+        userId: user?.uid || 'guest',
+        studentId, studentName, isGuest,
+        answers, score, correctAnswers, incorrectAnswers,
         unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
-        totalQuestions: flatQuestions.length,
-        timeTaken,
+        totalQuestions: flatQuestions.length, timeTaken,
         completedAt: serverTimestamp(),
-        sectionPerformance,
+        sectionPerformance: quiz.structure.map(section => {
+            const sectionQuestions = flatQuestions.filter(q => q.sectionId === section.id);
+            const sectionCorrect = sectionQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
+            const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
+            const attempted = sectionCorrect + sectionIncorrect;
+            return {
+                sectionId: section.id, sectionName: section.name, totalQuestions: sectionQuestions.length,
+                correct: sectionCorrect, incorrect: sectionIncorrect,
+                accuracy: attempted > 0 ? (sectionCorrect / attempted) * 100 : 0
+            }
+        }),
     };
 
     try {
@@ -190,13 +172,12 @@ export default function QuizPage() {
 
   useEffect(() => {
     if (status !== 'active') return;
-    
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
+    if (timeLeft <= 0) {
       handleSubmit();
+      return;
     }
+    const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    return () => clearTimeout(timer);
   }, [timeLeft, status, handleSubmit]);
 
   const handleSelectOption = (questionNumber: number, optionId: string) => {
@@ -216,125 +197,105 @@ export default function QuizPage() {
   };
 
   if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-          <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl">
-            <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div>
-            <Card>
-                <CardContent className="p-6">
-                <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" />
-                <div className="space-y-4"> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> </div>
-                </CardContent>
-            </Card>
-            <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div>
-        </div>
-      </div>
-    );
+    return ( <div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div> );
   }
   
   if (status === 'not_found' || status === 'private') {
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
-            <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
-            <h1 className="text-3xl font-bold"> {status === 'not_found' ? 'Quiz Not Found' : 'Access Denied'} </h1>
-            <p className="text-muted-foreground mt-2"> {status === 'not_found' ? 'The quiz you are looking for does not exist.' : 'This quiz is private and cannot be attempted.'} </p>
-            <Button onClick={() => router.push('/dashboard')} className="mt-6">Go to Dashboard</Button>
-        </div>
-    );
+    return ( <div className="flex flex-col items-center justify-center min-h-screen text-center p-4"> <ShieldAlert className="h-16 w-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold"> {status === 'not_found' ? 'Quiz Not Found' : 'Access Denied'} </h1> <p className="text-muted-foreground mt-2"> {status === 'not_found' ? 'The quiz you are looking for does not exist.' : 'This quiz is private and cannot be attempted.'} </p> <Button onClick={() => router.push('/dashboard')} className="mt-6">Go to Dashboard</Button> </div> );
   }
 
   const currentQuestion = flatQuestions[currentQuestionIndex];
   const timeIsLow = timeLeft <= 5 * 60;
   
   return (
-    <div className="flex flex-col h-screen">
-       <AnimatePresence>
+    <div className="flex flex-col h-screen overflow-hidden">
+      <AnimatePresence>
         {status === 'needs_identity' && (
-             <AlertDialog open={true}>
-                <AlertDialogContent asChild>
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                    >
-                     <AlertDialogHeader>
-                        <AlertDialogTitle className="text-center text-2xl">Welcome to the Exam</AlertDialogTitle>
-                        <AlertDialogDescription className="text-center">Please enter your name to begin.</AlertDialogDescription>
-                     </AlertDialogHeader>
-                     <div className="py-4 space-y-4">
-                         <Input 
-                            placeholder="Your Full Name"
-                            value={studentName}
-                            onChange={e => setStudentName(e.target.value)}
-                            className="text-center text-lg h-12"
-                            autoFocus
-                         />
-                         <Button onClick={handleBeginExam} className="w-full h-12">Begin Exam</Button>
-                     </div>
-                    </motion.div>
-                </AlertDialogContent>
-             </AlertDialog>
+          <AlertDialog open={true}>
+            <AlertDialogContent asChild>
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-center text-2xl">Welcome to the Exam</AlertDialogTitle>
+                  <AlertDialogDescription className="text-center">Please enter your name to begin.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="py-4 space-y-4">
+                  <Input placeholder="Your Full Name" value={studentName} onChange={e => setStudentName(e.target.value)} className="text-center text-lg h-12" autoFocus />
+                  <Button onClick={handleBeginExam} className="w-full h-12">Begin Exam</Button>
+                </div>
+              </motion.div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </AnimatePresence>
 
       {status === 'active' && quiz && (
         <>
-            <header className="sticky top-0 z-10 flex items-center justify-between p-3 border-b bg-card shadow-sm">
-                <Badge variant="outline" className="text-sm font-semibold"> {currentQuestion.sectionName} </Badge>
-                <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive animate-pulse" : "text-primary")}>
-                    <Timer className="h-6 w-6"/>
-                    <span> {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')} </span>
-                </div>
-            </header>
-
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
-            <div className="max-w-4xl mx-auto">
-                <Card>
-                    <CardContent className="p-6">
-                        <p className="text-sm font-semibold text-primary mb-2"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
-                        <p className="text-lg md:text-xl font-medium leading-relaxed"> {currentQuestion.text} </p>
-                    </CardContent>
-                </Card>
-                <div className="mt-6 space-y-3">
-                    {currentQuestion.options.map(option => (
-                        <Button
-                            key={option.id}
-                            variant={answers[currentQuestion.questionNumber] === option.id ? "default" : "outline"}
-                            className="w-full h-auto min-h-[48px] justify-start text-left p-4 text-base md:text-lg whitespace-normal"
-                            onClick={() => handleSelectOption(currentQuestion.questionNumber, option.id)}
-                            disabled={status === 'submitting'}
-                        >
-                            <span className="mr-4 font-bold">{option.id}.</span>
-                            {option.text}
-                        </Button>
-                    ))}
-                </div>
-                {status === 'submitting' && (
-                    <Alert className="mt-8">
-                        <AlertCircle className="h-4 w-4 animate-spin" />
-                        <AlertTitle>Submitting...</AlertTitle>
-                        <AlertDescription> Please wait while we calculate your results. </AlertDescription>
-                    </Alert>
-                )}
-                </div>
-            </main>
-
-            <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-card/90 backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto flex justify-between w-full">
-                <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Prev
-                </Button>
-                {currentQuestionIndex === flatQuestions.length - 1 ? (
-                    <Button onClick={handleSubmit} disabled={status === 'submitting'} className="bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="mr-2 h-4 w-4" /> Submit Quiz
-                    </Button>
-                ) : (
-                    <Button onClick={handleNext} disabled={status === 'submitting'}>
-                        Next <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                )}
+          <header className="sticky top-0 z-10 flex flex-col pt-2">
+            <div className="flex items-center justify-between p-3">
+              <Badge variant="outline" className="text-sm font-semibold">{currentQuestion.sectionName}</Badge>
+              <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive" : "text-primary")}>
+                <Timer className="h-6 w-6"/>
+                <span> {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')} </span>
+              </div>
             </div>
-            </footer>
+            <Progress value={progress} className="h-1 bg-accent/20 [&>div]:bg-accent" />
+          </header>
+
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentQuestionIndex}
+                initial={{ x: 300, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -300, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 25 }}
+                className="max-w-4xl mx-auto"
+              >
+                <Card className="bg-transparent border-0 shadow-none">
+                  <CardContent className="p-0">
+                    <p className="text-sm font-semibold text-primary mb-4"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
+                    <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed">{currentQuestion.text}</p>
+                  </CardContent>
+                </Card>
+                <div className="mt-8 space-y-3">
+                  {currentQuestion.options.map(option => (
+                    <motion.div key={option.id} whileTap={{ scale: 0.98 }}>
+                      <Button
+                        variant="outline"
+                        className={cn("w-full h-auto min-h-[56px] justify-start text-left p-4 text-base md:text-lg whitespace-normal border-2",
+                          answers[currentQuestion.questionNumber] === option.id 
+                          ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(124,58,237,0.3)]"
+                          : "border-input"
+                        )}
+                        onClick={() => handleSelectOption(currentQuestion.questionNumber, option.id)}
+                        disabled={status === 'submitting'}
+                      >
+                        <span className="mr-4 font-bold">{option.id}.</span>
+                        {option.text}
+                      </Button>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-background/80 backdrop-blur-sm">
+            <div className="max-w-4xl mx-auto flex justify-between w-full">
+              <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'}>
+                <ArrowLeft/> Prev
+              </Button>
+              {currentQuestionIndex === flatQuestions.length - 1 ? (
+                <Button onClick={handleSubmit} disabled={status === 'submitting'} className="bg-green-600 hover:bg-green-700">
+                  <CheckCircle/> Submit Quiz
+                </Button>
+              ) : (
+                <Button onClick={handleNext} disabled={status === 'submitting'}>
+                  Next <ArrowRight/>
+                </Button>
+              )}
+            </div>
+          </footer>
         </>
       )}
     </div>

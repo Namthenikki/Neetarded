@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { User, Mail, Shield } from "lucide-react";
 
 export default function ProfilePage() {
@@ -20,7 +20,6 @@ export default function ProfilePage() {
           <CardHeader>
             <div className="flex items-center gap-6">
               <Avatar className="h-20 w-20 border-2 border-primary">
-                <AvatarImage src={`https://avatar.vercel.sh/${user.email}.png`} alt={user.name} />
                 <AvatarFallback className="text-3xl bg-primary/20">{getInitials(user.name)}</AvatarFallback>
               </Avatar>
               <div>
