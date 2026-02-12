@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { generateBinaryCode } from "@/lib/binaryUtils";
 import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
-import { doc, setDoc, addDoc, collection } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
@@ -136,19 +136,19 @@ export default function CreateQuizPage() {
     const sectionIds = new Set<string>();
     for (const section of structure) {
       if (!section.name.trim() || !section.id.trim()) {
-        alert(`Incomplete Section: Please provide a name and ID for all sections.`);
+        toast({ variant: "destructive", title: `Incomplete Section`, description: "Please provide a name and ID for all sections."});
         return false;
       }
       if (section.id.length !== 3) {
-        alert(`Invalid Section ID: Section ID "${section.id}" must be 3 characters long.`);
+        toast({ variant: "destructive", title: `Invalid Section ID`, description: `Section ID "${section.id}" must be 3 characters long.`});
         return false;
       }
       if (sectionIds.has(section.id)) {
-        alert(`Duplicate Section ID: Section ID "${section.id}" must be unique.`);
+        toast({ variant: "destructive", title: `Duplicate Section ID`, description: `Section ID "${section.id}" must be unique.`});
         return false;
       }
       if (section.chapters.some(ch => !ch.name.trim())) {
-         alert(`Incomplete Chapter: Please provide a name for all chapters in section "${section.name}".`);
+         toast({ variant: "destructive", title: `Incomplete Chapter`, description: `Please provide a name for all chapters in section "${section.name}".`});
         return false;
       }
       sectionIds.add(section.id);
@@ -210,19 +210,26 @@ export default function CreateQuizPage() {
   };
   
   const handleSave = async (action: "start" | "publish") => {
-    console.log("Button Clicked:", action);
     if (!title.trim() || !hasQuestions) {
-      alert("Please add a Title and at least one Question first!");
+      toast({
+        variant: "destructive",
+        title: "Incomplete Quiz",
+        description: "Please add a Title and at least one Question first!",
+      });
       return;
     }
     if (!validateStructure()) {
       return;
     }
     if (!user) {
-      alert("You must be logged in to save a quiz.");
+      toast({
+        variant: "destructive",
+        title: "Not Authenticated",
+        description: "You must be logged in to save a quiz.",
+      });
       return;
     }
-
+  
     setIsSaving(true);
     try {
       const isPublished = action === 'publish';
@@ -231,29 +238,31 @@ export default function CreateQuizPage() {
         settings,
         structure,
         isPublished,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         ownerId: user.uid,
       };
-
-      console.log("Saving Quiz Payload:", quizPayload);
-      
+  
       const docRef = await addDoc(collection(db, "quizzes"), quizPayload);
-      await setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
-
+      // We don't need to await this secondary write for the redirect
+      setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
+  
       if (action === 'start') {
-         setTimeout(() => {
-            window.location.assign(`/quiz/${docRef.id}`);
-        }, 500);
+        // Forceful redirect to bypass Next.js router issues
+        window.location.assign(`/quiz/${docRef.id}`);
       } else { // publish
         setPublishedQuizId(docRef.id);
         setShowSuccessModal(true);
+        setIsSaving(false); // Stop spinner for modal
       }
-
+  
     } catch (error: any) {
       console.error("Save failed:", error);
-      alert("Error saving quiz: " + error.message);
-    } finally {
-      setIsSaving(false);
+      toast({
+        variant: "destructive",
+        title: "Error saving quiz",
+        description: error.message || 'An unknown error occurred.',
+      });
+      setIsSaving(false); // Stop spinner on error
     }
   };
   

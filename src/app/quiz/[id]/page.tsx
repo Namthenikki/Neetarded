@@ -5,8 +5,8 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore";
-import { type Quiz, type Question, type Section, type Chapter } from "@/types/quiz";
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { type Quiz, type Question } from "@/types/quiz";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { Timer, AlertCircle, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert } from "lucide-react";
 
-type QuizStatus = 'loading' | 'ready' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private';
+type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private';
 
 type AnswerMap = { [questionNumber: number]: string };
 
@@ -38,7 +38,6 @@ export default function QuizPage() {
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
     if (!quiz) return [];
-    // Ensure all questions are sorted by their original number after flattening
     return quiz.structure.flatMap((section) =>
       section.chapters.flatMap((chapter) =>
         (chapter.questions || []).map((q) => ({
@@ -57,14 +56,13 @@ export default function QuizPage() {
         const quizDoc = await getDoc(doc(db, "quizzes", quizId));
         if (quizDoc.exists()) {
           const quizData = quizDoc.data() as Quiz;
-          // Access Control
           if (!quizData.isPublished && quizData.ownerId !== user.uid) {
               setStatus('private');
               return;
           }
           setQuiz(quizData);
           setTimeLeft(quizData.settings.duration * 60);
-          setStatus('ready'); // Ready to start, not active yet
+          setStatus('active');
         } else {
           setStatus('not_found');
         }
@@ -107,7 +105,7 @@ export default function QuizPage() {
         unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
         totalQuestions: flatQuestions.length,
         timeTaken,
-        completedAt: new Date(),
+        completedAt: serverTimestamp(),
     };
 
     try {
@@ -116,6 +114,7 @@ export default function QuizPage() {
         router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
     } catch(error) {
         console.error("Error saving attempt:", error);
+        alert("Failed to submit your attempt. Please try again.");
         setStatus('active'); // Re-enable quiz if submission fails
     }
   }, [status, quiz, user, answers, flatQuestions, router, timeLeft]);
@@ -148,24 +147,30 @@ export default function QuizPage() {
     }
   };
 
-  if (status === 'loading') {
+  if (status === 'loading' || !quiz) {
     return (
-      <div className="p-4 md:p-8 space-y-6">
-        <div className="max-w-4xl mx-auto">
-          <Skeleton className="h-8 w-1/3 mb-4" />
-          <Skeleton className="h-10 w-2/3 mb-8" />
-          <Card>
-            <CardContent className="p-6">
-              <Skeleton className="h-6 w-1/4 mb-4" />
-              <Skeleton className="h-8 w-full mb-6" />
-              <div className="space-y-4">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            </CardContent>
-          </Card>
+      <div className="flex items-center justify-center min-h-screen">
+          <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl">
+            <div className="flex justify-between items-center">
+                <Skeleton className="h-8 w-1/4" />
+                <Skeleton className="h-8 w-24" />
+            </div>
+            <Card>
+                <CardContent className="p-6">
+                <Skeleton className="h-6 w-1/4 mb-4" />
+                <Skeleton className="h-8 w-full mb-6" />
+                <div className="space-y-4">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                </div>
+                </CardContent>
+            </Card>
+            <div className="flex justify-between items-center">
+                <Skeleton className="h-10 w-24" />
+                <Skeleton className="h-10 w-24" />
+            </div>
         </div>
       </div>
     );
@@ -186,18 +191,6 @@ export default function QuizPage() {
     );
   }
 
-  if (status === 'ready') {
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
-            <h1 className="text-4xl font-bold">{quiz?.title}</h1>
-            <p className="text-muted-foreground mt-2 text-lg">You have {quiz?.settings.duration} minutes to complete the test.</p>
-            <Button onClick={() => setStatus('active')} size="lg" className="mt-8">
-                Start Quiz
-            </Button>
-        </div>
-    )
-  }
-  
   const currentQuestion = flatQuestions[currentQuestionIndex];
   const timeIsLow = timeLeft <= 5 * 60;
   
