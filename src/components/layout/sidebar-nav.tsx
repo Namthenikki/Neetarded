@@ -4,14 +4,11 @@ import {
   LayoutDashboard,
   BookCopy,
   BarChart3,
-  LogOut,
   User as UserIcon,
-  Settings,
   BookPlus,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { auth } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
@@ -38,10 +35,6 @@ export function SidebarNav() {
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const handleLogout = () => {
-    auth.signOut();
-  };
-  
   const getInitials = (name: string = '') => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
@@ -100,15 +93,6 @@ export function SidebarNav() {
                 <UserIcon />
                 <span>Profile</span>
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings />
-              <span>Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-              <LogOut />
-              <span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
