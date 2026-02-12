@@ -41,6 +41,7 @@ export interface Quiz {
 export interface QuizAttempt {
   id?: string;
   quizId: string;
+  quizTitle: string;
   userId: string;
   userName: string;
   answers: { [questionNumber: number]: string };
@@ -49,5 +50,6 @@ export interface QuizAttempt {
   correctAnswers: number;
   incorrectAnswers: number;
   unattempted: number;
-  completedAt: Date;
+  timeTaken: number; // in seconds
+  completedAt: any; // Allow Firestore Timestamp
 }

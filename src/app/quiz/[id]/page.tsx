@@ -13,9 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { Timer, AlertCircle, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
+import { Timer, AlertCircle, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert } from "lucide-react";
 
-type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed';
+type QuizStatus = 'loading' | 'ready' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private';
 
 type AnswerMap = { [questionNumber: number]: string };
 
@@ -38,6 +38,7 @@ export default function QuizPage() {
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
     if (!quiz) return [];
+    // Ensure all questions are sorted by their original number after flattening
     return quiz.structure.flatMap((section) =>
       section.chapters.flatMap((chapter) =>
         (chapter.questions || []).map((q) => ({
@@ -46,35 +47,39 @@ export default function QuizPage() {
           chapterName: chapter.name,
         }))
       )
-    );
+    ).sort((a,b) => a.questionNumber - b.questionNumber);
   }, [quiz]);
   
   useEffect(() => {
     async function fetchQuiz() {
-      if (!quizId) return;
+      if (!quizId || !user) return;
       try {
         const quizDoc = await getDoc(doc(db, "quizzes", quizId));
         if (quizDoc.exists()) {
           const quizData = quizDoc.data() as Quiz;
+          // Access Control
+          if (!quizData.isPublished && quizData.ownerId !== user.uid) {
+              setStatus('private');
+              return;
+          }
           setQuiz(quizData);
           setTimeLeft(quizData.settings.duration * 60);
-          setStatus('active');
+          setStatus('ready'); // Ready to start, not active yet
         } else {
-          console.error("No such quiz!");
-          // Handle quiz not found
+          setStatus('not_found');
         }
       } catch (error) {
         console.error("Error fetching quiz:", error);
+        setStatus('not_found');
       }
     }
     fetchQuiz();
-  }, [quizId]);
+  }, [quizId, user]);
 
   const handleSubmit = useCallback(async () => {
-    if (status === 'submitting' || !quiz || !user) return;
+    if (status === 'submitting' || status === 'completed' || !quiz || !user) return;
     setStatus('submitting');
     
-    // Calculate score
     let correctAnswers = 0;
     let incorrectAnswers = 0;
     flatQuestions.forEach(q => {
@@ -88,9 +93,11 @@ export default function QuizPage() {
         }
     });
     const score = (correctAnswers * quiz.settings.positiveMarks) + (incorrectAnswers * quiz.settings.negativeMarks);
+    const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
     const attemptData = {
         quizId: quiz.id,
+        quizTitle: quiz.title,
         userId: user.uid,
         userName: user.name,
         answers,
@@ -99,20 +106,23 @@ export default function QuizPage() {
         incorrectAnswers,
         unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
         totalQuestions: flatQuestions.length,
+        timeTaken,
         completedAt: new Date(),
     };
 
     try {
         const attemptRef = await addDoc(collection(db, "attempts"), attemptData);
+        setStatus('completed');
         router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
     } catch(error) {
         console.error("Error saving attempt:", error);
         setStatus('active'); // Re-enable quiz if submission fails
     }
-  }, [status, quiz, user, answers, flatQuestions, router]);
+  }, [status, quiz, user, answers, flatQuestions, router, timeLeft]);
 
   useEffect(() => {
     if (status !== 'active') return;
+    
     if (timeLeft > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
@@ -138,19 +148,54 @@ export default function QuizPage() {
     }
   };
 
-  if (status === 'loading' || !quiz) {
+  if (status === 'loading') {
     return (
       <div className="p-4 md:p-8 space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-8 w-full" />
-        <div className="space-y-4 pt-8">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
+        <div className="max-w-4xl mx-auto">
+          <Skeleton className="h-8 w-1/3 mb-4" />
+          <Skeleton className="h-10 w-2/3 mb-8" />
+          <Card>
+            <CardContent className="p-6">
+              <Skeleton className="h-6 w-1/4 mb-4" />
+              <Skeleton className="h-8 w-full mb-6" />
+              <div className="space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
+  }
+  
+  if (status === 'not_found' || status === 'private') {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
+            <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+            <h1 className="text-3xl font-bold">
+                {status === 'not_found' ? 'Quiz Not Found' : 'Access Denied'}
+            </h1>
+            <p className="text-muted-foreground mt-2">
+                {status === 'not_found' ? 'The quiz you are looking for does not exist.' : 'This quiz is private and cannot be attempted.'}
+            </p>
+            <Button onClick={() => router.push('/dashboard')} className="mt-6">Go to Dashboard</Button>
+        </div>
+    );
+  }
+
+  if (status === 'ready') {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
+            <h1 className="text-4xl font-bold">{quiz?.title}</h1>
+            <p className="text-muted-foreground mt-2 text-lg">You have {quiz?.settings.duration} minutes to complete the test.</p>
+            <Button onClick={() => setStatus('active')} size="lg" className="mt-8">
+                Start Quiz
+            </Button>
+        </div>
+    )
   }
   
   const currentQuestion = flatQuestions[currentQuestionIndex];
@@ -158,12 +203,11 @@ export default function QuizPage() {
   
   return (
     <div className="flex flex-col h-screen">
-      {/* Top Bar */}
       <header className="sticky top-0 z-10 flex items-center justify-between p-3 border-b bg-card shadow-sm">
         <Badge variant="outline" className="text-sm font-semibold">
             {currentQuestion.sectionName}
         </Badge>
-        <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive" : "text-primary")}>
+        <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive animate-pulse" : "text-primary")}>
             <Timer className="h-6 w-6"/>
             <span>
                 {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:
@@ -172,8 +216,8 @@ export default function QuizPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
+       <div className="max-w-4xl mx-auto">
         <Card>
             <CardContent className="p-6">
                 <p className="text-sm font-semibold text-primary mb-2">
@@ -192,6 +236,7 @@ export default function QuizPage() {
                     variant={answers[currentQuestion.questionNumber] === option.id ? "default" : "outline"}
                     className="w-full h-auto min-h-[48px] justify-start text-left p-4 text-base md:text-lg whitespace-normal"
                     onClick={() => handleSelectOption(currentQuestion.questionNumber, option.id)}
+                    disabled={status === 'submitting'}
                 >
                     <span className="mr-4 font-bold">{option.id}.</span>
                     {option.text}
@@ -201,18 +246,19 @@ export default function QuizPage() {
         
         {status === 'submitting' && (
             <Alert className="mt-8">
-                <AlertCircle className="h-4 w-4" />
+                <AlertCircle className="h-4 w-4 animate-spin" />
                 <AlertTitle>Submitting...</AlertTitle>
                 <AlertDescription>
                     Please wait while we calculate your results.
                 </AlertDescription>
             </Alert>
         )}
+        </div>
       </main>
 
-      {/* Bottom Bar */}
-      <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-card">
-        <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'}>
+      <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-card/90 backdrop-blur-sm">
+       <div className="max-w-4xl mx-auto flex justify-between w-full">
+         <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Prev
         </Button>
@@ -228,6 +274,7 @@ export default function QuizPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
         )}
+       </div>
       </footer>
     </div>
   );
