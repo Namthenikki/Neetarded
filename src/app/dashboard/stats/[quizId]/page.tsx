@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, getDoc, doc } from "firebase/firestore";
 import Link from "next/link";
 import { type QuizAttempt } from "@/types/quiz";
 import {
@@ -22,7 +21,7 @@ import { Loader2, ArrowLeft, Trophy, User } from "lucide-react";
 import { format } from "date-fns";
 
 export default function QuizStatsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const params = useParams();
   const router = useRouter();
   const quizId = params.quizId as string;
@@ -34,8 +33,21 @@ export default function QuizStatsPage() {
   useEffect(() => {
     async function fetchAttempts() {
       if (!user || !quizId) return;
+      if (user.role !== 'admin') {
+          logout();
+          return;
+      }
       setLoading(true);
+
       try {
+        const quizDoc = await getDoc(doc(db, "quizzes", quizId));
+        if (quizDoc.exists()) {
+            setQuizTitle(quizDoc.data().title);
+        } else {
+            router.replace('/dashboard/admin');
+            return;
+        }
+
         const q = query(
           collection(db, "attempts"),
           where("quizId", "==", quizId),
@@ -45,24 +57,12 @@ export default function QuizStatsPage() {
         
         const quizAttempts = querySnapshot.docs.map((doc) => {
           const data = doc.data() as QuizAttempt;
-          if (data.quizTitle && !quizTitle) {
-            setQuizTitle(data.quizTitle);
-          }
           return {
             id: doc.id,
             ...data,
             completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
           };
         });
-
-        // Basic check to ensure creator owns the quiz
-        // In a real app, you'd fetch the quiz doc and verify ownerId
-        if (quizAttempts.length > 0) {
-            const firstAttempt = quizAttempts[0];
-            const quizDoc = await getDocs(query(collection(db, "quizzes"), where("id", "==", firstAttempt.quizId), where("ownerId", "==", user.uid)));
-            // This check is imperfect but adds a layer of security
-            // A better way would be a backend rule or fetching the quiz doc first
-        }
 
         setAttempts(quizAttempts);
       } catch (error) {
@@ -72,10 +72,12 @@ export default function QuizStatsPage() {
       }
     }
 
-    fetchAttempts();
-  }, [user, quizId, quizTitle]);
+    if (!authLoading) {
+      fetchAttempts();
+    }
+  }, [user, authLoading, quizId, router, logout]);
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -85,21 +87,19 @@ export default function QuizStatsPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <Button variant="ghost" size="sm" onClick={() => router.back()} className="mb-2">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Quizzes
-          </Button>
-          <h1 className="text-3xl font-bold tracking-tight">Command Center</h1>
-          <p className="text-muted-foreground line-clamp-1">
-            Leaderboard for: {quizTitle || "Loading..."}
-          </p>
-        </div>
+      <header className="mb-8">
+        <Button variant="ghost" size="sm" onClick={() => router.back()} className="mb-2 rounded-2xl">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Admin
+        </Button>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Command Center</h1>
+        <p className="text-slate-600 line-clamp-1">
+          Leaderboard for: {quizTitle || "Loading..."}
+        </p>
       </header>
 
-      <Card>
+      <Card className="rounded-2xl">
         <CardHeader>
-          <CardTitle>Leaderboard</CardTitle>
+          <CardTitle className="text-slate-900">Leaderboard</CardTitle>
           <CardDescription>
             See how students performed on your quiz.
           </CardDescription>
@@ -125,7 +125,7 @@ export default function QuizStatsPage() {
 
                   return (
                     <TableRow key={attempt.id}>
-                      <TableCell className="font-bold text-lg">
+                      <TableCell className="font-bold text-lg text-slate-700">
                         {index === 0 && <Trophy className="h-5 w-5 text-yellow-500 inline-block" />}
                         {index === 1 && <Trophy className="h-5 w-5 text-slate-400 inline-block" />}
                         {index === 2 && <Trophy className="h-5 w-5 text-amber-700 inline-block" />}
@@ -137,10 +137,10 @@ export default function QuizStatsPage() {
                         </Link>
                         <div className="text-xs text-muted-foreground font-mono">{attempt.studentId}</div>
                       </TableCell>
-                      <TableCell className="text-right font-bold">{attempt.score}</TableCell>
-                      <TableCell className="hidden md:table-cell text-right">{accuracy.toFixed(1)}%</TableCell>
-                      <TableCell className="hidden md:table-cell">{time}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{format(attempt.completedAt, "PPp")}</TableCell>
+                      <TableCell className="text-right font-bold text-slate-800">{attempt.score}</TableCell>
+                      <TableCell className="hidden md:table-cell text-right text-slate-600">{accuracy.toFixed(1)}%</TableCell>
+                      <TableCell className="hidden md:table-cell text-slate-600">{time}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-slate-600">{format(attempt.completedAt, "PPp")}</TableCell>
                     </TableRow>
                   );
                 })

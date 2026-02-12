@@ -1,35 +1,70 @@
 "use client";
 
-import { createContext, ReactNode } from 'react';
+import { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 export interface AppUser {
-  uid: string;
+  studentId: string;
   name: string;
-  email: string;
-  uniqueId: string;
+  role: 'student' | 'admin';
 }
 
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
+  logout: () => void;
+  login: (user: AppUser) => void;
 }
-
-const mockUser: AppUser = {
-  uid: 'mock-user-uid-12345',
-  name: 'Neetard User',
-  email: 'neetard.user@example.com',
-  uniqueId: 'NTD123',
-};
-
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  logout: () => {},
+  login: () => {},
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    try {
+        const storedId = localStorage.getItem('neetarded_id');
+        const storedName = localStorage.getItem('neetarded_name');
+        const storedRole = localStorage.getItem('neetarded_role');
+
+        if (storedId && storedName) {
+            setUser({
+                studentId: storedId,
+                name: storedName,
+                role: storedRole === 'admin' ? 'admin' : 'student',
+            });
+        }
+    } catch (e) {
+        console.error("Could not read from localStorage", e);
+    } finally {
+        setLoading(false);
+    }
+  }, []);
+
+  const login = useCallback((newUser: AppUser) => {
+    localStorage.setItem('neetarded_id', newUser.studentId);
+    localStorage.setItem('neetarded_name', newUser.name);
+    localStorage.setItem('neetarded_role', newUser.role);
+    setUser(newUser);
+  }, []);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('neetarded_id');
+    localStorage.removeItem('neetarded_name');
+    localStorage.removeItem('neetarded_role');
+    setUser(null);
+    router.push('/login');
+  }, [router]);
+
   return (
-    <AuthContext.Provider value={{ user: mockUser, loading: false }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

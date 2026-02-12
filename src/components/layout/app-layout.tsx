@@ -9,12 +9,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
 
   if (isMobile === undefined) {
-    return null; // Or a loading skeleton
+    return null; 
   }
 
   if (isMobile) {
     return (
-      <div className="pb-20">
+      <div className="pb-20 bg-white">
         <main>{children}</main>
         <BottomNav />
       </div>
@@ -22,9 +22,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-white">
       <SidebarNav />
-      <main className="flex-1 border-l">{children}</main>
+      <main className="flex-1">{children}</main>
     </div>
   );
 }

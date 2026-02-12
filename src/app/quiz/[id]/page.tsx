@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -11,14 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, X } from "lucide-react";
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
+import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type QuizStatus = 'loading' | 'needs_identity' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private';
+type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
 
 interface FlatQuestion extends Question {
@@ -30,7 +27,7 @@ interface FlatQuestion extends Question {
 export default function QuizPage() {
   const router = useRouter();
   const params = useParams();
-  const { user } = useAuth(); // Logged-in creator
+  const { user, loading: authLoading } = useAuth();
   const quizId = params.id as string;
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -39,11 +36,6 @@ export default function QuizPage() {
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [timeLeft, setTimeLeft] = useState(0);
 
-  // Student Identity State
-  const [studentId, setStudentId] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState<string | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
-  const [identityInput, setIdentityInput] = useState('');
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
     if (!quiz) return [];
@@ -58,82 +50,44 @@ export default function QuizPage() {
       )
     ).sort((a, b) => a.questionNumber - b.questionNumber);
   }, [quiz]);
-
-  const progress = useMemo(() => {
-    if (flatQuestions.length === 0) return 0;
-    return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
-  }, [currentQuestionIndex, flatQuestions.length]);
-
-  const processIdentityName = (name: string) => {
-    return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  };
-
+  
   useEffect(() => {
-    const storedStudentId = localStorage.getItem('neetarded_student_id');
+      if (authLoading) {
+          setStatus('loading');
+          return;
+      }
+      if (!user) {
+          setStatus('auth_required');
+          router.replace('/login');
+          return;
+      }
 
-    if (user) {
-      setStudentId(user.uid);
-      setStudentName(user.name);
-      setIsGuest(false);
-    } else if (storedStudentId) {
-      setStudentId(storedStudentId);
-      setStudentName(storedStudentId); // For guests, ID and name are the same
-      setIsGuest(true);
-    } else {
-      setIsGuest(true);
-      setStatus('needs_identity');
-      return;
-    }
-  }, [user]);
-
-  useEffect(() => {
-    async function fetchQuiz() {
-      if (status === 'needs_identity' || !studentId) return;
-      
-      setLoading(true);
-      try {
-        const quizDoc = await getDoc(doc(db, "quizzes", quizId));
-        if (quizDoc.exists()) {
-          const quizData = quizDoc.data() as Quiz;
-          if (!quizData.isPublished && quizData.ownerId !== user?.uid) {
-            setStatus('private');
-            return;
+      async function fetchQuiz() {
+        setStatus('loading');
+        try {
+          const quizDoc = await getDoc(doc(db, "quizzes", quizId));
+          if (quizDoc.exists()) {
+            const quizData = quizDoc.data() as Quiz;
+            if (!quizData.isPublished && user.role !== 'admin') {
+              setStatus('private');
+              return;
+            }
+            setQuiz(quizData);
+            setTimeLeft(quizData.settings.duration * 60);
+            setStatus('active');
+          } else {
+            setStatus('not_found');
           }
-          setQuiz(quizData);
-          setTimeLeft(quizData.settings.duration * 60);
-          setStatus('active');
-        } else {
+        } catch (error) {
+          console.error("Error fetching quiz:", error);
           setStatus('not_found');
         }
-      } catch (error) {
-        console.error("Error fetching quiz:", error);
-        setStatus('not_found');
-      } finally {
-        setLoading(false);
       }
-    }
-    fetchQuiz();
-  }, [quizId, user, status, studentId]);
-
-  const handleBeginExam = () => {
-    const processedId = processIdentityName(identityInput);
-    if (!processedId) {
-      alert("Please enter a valid name.");
-      return;
-    }
-    setStudentId(processedId);
-    setStudentName(processedId);
-    localStorage.setItem('neetarded_student_id', processedId);
-    setStatus('loading'); // Triggers fetchQuiz useEffect
-  }
-  
-  const handleIdentityInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setIdentityInput(processIdentityName(e.target.value));
-  };
-
+      fetchQuiz();
+  }, [quizId, user, authLoading, router]);
 
   const handleSubmit = useCallback(async () => {
-    if (status !== 'active' || !quiz || !studentId || !studentName) return;
+    if (status !== 'active' || !quiz || !user) return;
     setStatus('submitting');
     
     let correctAnswers = 0;
@@ -152,8 +106,10 @@ export default function QuizPage() {
     const attemptData = {
         quizId: quiz.id,
         quizTitle: quiz.title,
-        userId: user?.uid || 'guest',
-        studentId, studentName, isGuest,
+        userId: user.studentId,
+        studentId: user.studentId, 
+        studentName: user.name, 
+        isGuest: false,
         answers, score, correctAnswers, incorrectAnswers,
         unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
         totalQuestions: flatQuestions.length, timeTaken,
@@ -180,7 +136,7 @@ export default function QuizPage() {
         alert("Failed to submit your attempt. Please try again.");
         setStatus('active');
     }
-  }, [status, quiz, studentId, studentName, isGuest, answers, flatQuestions, router, timeLeft, user]);
+  }, [status, quiz, user, answers, flatQuestions, router, timeLeft]);
 
   useEffect(() => {
     if (status !== 'active') return;
@@ -207,9 +163,14 @@ export default function QuizPage() {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
+  
+  const progress = useMemo(() => {
+    if (flatQuestions.length === 0) return 0;
+    return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
+  }, [currentQuestionIndex, flatQuestions.length]);
 
-  if (status === 'loading') {
-    return ( <div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> <Skeleton className="h-12 w-full" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div> );
+  if (status === 'loading' || status === 'auth_required') {
+    return ( <div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card className="rounded-2xl"> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div> );
   }
   
   if (status === 'not_found' || status === 'private') {
@@ -221,38 +182,11 @@ export default function QuizPage() {
   
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      <AnimatePresence>
-        {status === 'needs_identity' && (
-          <AlertDialog open={true}>
-            <AlertDialogContent asChild className="bg-background/80 backdrop-blur-sm border-white/10">
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="text-center text-2xl font-bold">Student Identity Required</AlertDialogTitle>
-                  <AlertDialogDescription className="text-center">Enter your name to begin. This will be your permanent ID.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="py-4 space-y-4">
-                  <Input 
-                    placeholder="e.g. sourav" 
-                    value={identityInput} 
-                    onChange={handleIdentityInputChange} 
-                    className="text-center text-lg h-12" 
-                    autoFocus 
-                  />
-                  <Button onClick={handleBeginExam} className="w-full h-12 text-lg">
-                    Begin Exam
-                  </Button>
-                </div>
-              </motion.div>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </AnimatePresence>
-
-      {(status === 'active' && quiz) && (
+      {(status === 'active' && quiz && currentQuestion) && (
         <>
-          <header className="sticky top-0 z-10 flex flex-col pt-2">
+          <header className="sticky top-0 z-10 flex flex-col pt-2 bg-background">
             <div className="flex items-center justify-between p-3">
-              <Badge variant="outline" className="text-sm font-semibold">{currentQuestion.sectionName}</Badge>
+              <Badge variant="outline" className="text-sm font-semibold rounded-lg">{currentQuestion.sectionName}</Badge>
               <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive" : "text-primary")}>
                 <Timer className="h-6 w-6"/>
                 <span> {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')} </span>
@@ -271,7 +205,7 @@ export default function QuizPage() {
                 transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 className="max-w-4xl mx-auto"
               >
-                <Card className="bg-transparent border-0 shadow-none">
+                <Card className="bg-transparent border-0 shadow-none rounded-2xl">
                   <CardContent className="p-0">
                     <p className="text-sm font-semibold text-primary mb-4"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
                     <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed">{currentQuestion.text}</p>
@@ -282,7 +216,7 @@ export default function QuizPage() {
                     <motion.div key={option.id} whileTap={{ scale: 0.98 }}>
                       <Button
                         variant="outline"
-                        className={cn("w-full h-auto min-h-[56px] justify-start text-left p-4 text-base md:text-lg whitespace-normal border-2",
+                        className={cn("w-full h-auto min-h-[56px] justify-start text-left p-4 text-base md:text-lg whitespace-normal border-2 rounded-xl",
                           answers[currentQuestion.questionNumber] === option.id 
                           ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(124,58,237,0.3)]"
                           : "border-input"
@@ -302,15 +236,15 @@ export default function QuizPage() {
 
           <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-background/80 backdrop-blur-sm">
             <div className="max-w-4xl mx-auto flex justify-between w-full">
-              <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'}>
+              <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'} className="rounded-xl">
                 <ArrowLeft/> Prev
               </Button>
               {currentQuestionIndex === flatQuestions.length - 1 ? (
-                <Button onClick={handleSubmit} disabled={status === 'submitting'} className="bg-green-600 hover:bg-green-700">
+                <Button onClick={handleSubmit} disabled={status === 'submitting'} className="bg-green-600 hover:bg-green-700 rounded-xl">
                   <CheckCircle/> Submit Quiz
                 </Button>
               ) : (
-                <Button onClick={handleNext} disabled={status === 'submitting'}>
+                <Button onClick={handleNext} disabled={status === 'submitting'} className="rounded-xl">
                   Next <ArrowRight/>
                 </Button>
               )}
@@ -321,5 +255,3 @@ export default function QuizPage() {
     </div>
   );
 }
-
-    
