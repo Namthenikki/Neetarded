@@ -20,7 +20,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
-import { parseQuiz } from "@/ai/flows/quiz-parser";
+import { generateQuizAction } from "@/app/actions/quiz";
 import {
   Accordion,
   AccordionContent,
@@ -169,7 +169,7 @@ export default function CreateQuizPage() {
         })),
       }));
 
-      const result = await parseQuiz({
+      const result = await generateQuizAction({
         rawQuestions: questions,
         rawAnswers: answers,
         structure: structureForAi,

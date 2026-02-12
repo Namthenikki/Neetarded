@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview A flow for parsing raw quiz text into a structured JSON format.
  */
