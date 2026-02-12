@@ -49,7 +49,7 @@ export default function DashboardPage() {
         });
         setAttempts(studentAttempts);
 
-        // Fetch Assignments
+        // Fetch Assignments (The "Double-Fetch")
         const assignmentsQuery = query(
           collection(db, "assigned_quizzes"),
           where("studentId", "==", user.studentId),
