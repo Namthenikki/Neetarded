@@ -211,8 +211,8 @@ export default function CreateQuizPage() {
   
   const handleSave = async (action: "start" | "publish") => {
     console.log("Button Clicked:", action);
-    if (!title || !hasQuestions) {
-      alert("Please add a Title and Questions first!");
+    if (!title.trim() || !hasQuestions) {
+      alert("Please add a Title and at least one Question first!");
       return;
     }
     if (!validateStructure()) {
@@ -241,7 +241,9 @@ export default function CreateQuizPage() {
       await setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
 
       if (action === 'start') {
-        window.location.assign(`/quiz/${docRef.id}`);
+         setTimeout(() => {
+            window.location.assign(`/quiz/${docRef.id}`);
+        }, 500);
       } else { // publish
         setPublishedQuizId(docRef.id);
         setShowSuccessModal(true);
@@ -490,7 +492,7 @@ export default function CreateQuizPage() {
       </div>
 
         {/* Action Bar */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/90 p-4 backdrop-blur-sm md:left-64">
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/90 p-4 backdrop-blur-sm">
             <div className="mx-auto flex max-w-4xl items-center justify-end gap-4">
                 <Button
                     variant="secondary"
@@ -539,7 +541,4 @@ export default function CreateQuizPage() {
 
     </div>
   );
-
-    
-
-    
+}
