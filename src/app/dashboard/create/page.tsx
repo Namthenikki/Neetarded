@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, Save, Trash2, BookPlus, Loader2, BrainCircuit, Play, Globe, Clipboard } from "lucide-react";
+import { Plus, Trash2, BookPlus, Loader2, BrainCircuit, Rocket, CheckCircle, Share2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,10 +14,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import { generateBinaryCode } from "@/lib/binaryUtils";
 import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
-import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
@@ -37,6 +38,7 @@ export default function CreateQuizPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  // Core quiz data
   const [title, setTitle] = useState("");
   const [settings, setSettings] = useState<QuizSettings>({
     duration: 180,
@@ -46,10 +48,14 @@ export default function CreateQuizPage() {
   const [structure, setStructure] = useState<QuizStructure>([]);
   const [questions, setQuestions] = useState("");
   const [answers, setAnswers] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  
+  // State for UI/flow
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [publishedQuizId, setPublishedQuizId] = useState("");
+  const [isPorting, setIsPorting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [quizId, setQuizId] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
 
   const hasQuestions = useMemo(() => {
     return structure.some(section => 
@@ -209,74 +215,85 @@ export default function CreateQuizPage() {
     }
   };
   
-  const handleSave = async (action: "start" | "publish") => {
+  const handleFinalize = async () => {
     if (!title.trim() || !hasQuestions) {
-      toast({
-        variant: "destructive",
-        title: "Incomplete Quiz",
-        description: "Please add a Title and at least one Question first!",
-      });
+      alert("Please add a Title and at least one Question first!");
       return;
     }
-    if (!validateStructure()) {
-      return;
-    }
+    if (!validateStructure()) return;
     if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Not Authenticated",
-        description: "You must be logged in to save a quiz.",
-      });
+      alert("You must be logged in to save a quiz.");
       return;
     }
-  
-    setIsSaving(true);
+
+    setIsPorting(true);
+    setUploadProgress(0);
+
     try {
-      const isPublished = action === 'publish';
+      await new Promise(res => setTimeout(res, 200));
+      setUploadProgress(20);
+
       const quizPayload = {
         title,
         settings,
         structure,
-        isPublished,
+        isPublished: false, // Always publish as false initially
         createdAt: serverTimestamp(),
         ownerId: user.uid,
       };
-  
+      
+      console.log("Saving Quiz Payload:", quizPayload);
+
+      await new Promise(res => setTimeout(res, 500));
+      setUploadProgress(50);
+      
       const docRef = await addDoc(collection(db, "quizzes"), quizPayload);
-      // We don't need to await this secondary write for the redirect
+      // We don't await this secondary write for UI feedback speed
       setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
-  
-      if (action === 'start') {
-        // Forceful redirect to bypass Next.js router issues
-        window.location.assign(`/quiz/${docRef.id}`);
-      } else { // publish
-        setPublishedQuizId(docRef.id);
-        setShowSuccessModal(true);
-        setIsSaving(false); // Stop spinner for modal
-      }
-  
+
+      await new Promise(res => setTimeout(res, 300));
+      setUploadProgress(100);
+
+      await new Promise(res => setTimeout(res, 500));
+      setQuizId(docRef.id);
+      setIsReady(true); // Triggers Mission Control modal
+
     } catch (error: any) {
-      console.error("Save failed:", error);
-      toast({
-        variant: "destructive",
-        title: "Error saving quiz",
-        description: error.message || 'An unknown error occurred.',
-      });
-      setIsSaving(false); // Stop spinner on error
+      console.error("Finalize failed:", error);
+      alert("Error finalizing quiz: " + error.message);
+    } finally {
+      setIsPorting(false); // Hide porting modal
+      // We don't reset progress, so the full bar is visible before the next modal
     }
   };
-  
-  const copyLinkToClipboard = () => {
-    if(!publishedQuizId) return;
-    const link = `${window.location.origin}/quiz/${publishedQuizId}`;
-    navigator.clipboard.writeText(link);
-    toast({
-        title: "Link Copied!",
-        description: "The shareable link has been copied to your clipboard.",
-    });
+
+  const handleStartProtocol = () => {
+    if (!quizId) return;
+    window.location.assign(`/quiz/${quizId}`);
   };
 
-  const isActionDisabled = isSaving || isAnalyzing;
+  const handlePublishAndShare = async () => {
+    if (!quizId) return;
+    try {
+      await updateDoc(doc(db, "quizzes", quizId), { isPublished: true });
+      const link = `${window.location.origin}/quiz/${quizId}`;
+      navigator.clipboard.writeText(link);
+      toast({
+        title: "Published & Link Copied!",
+        description: "The quiz is now public and the link is on your clipboard.",
+      });
+      setIsReady(false); // Close modal
+      router.push('/dashboard/quizzes'); // Go to quizzes list
+    } catch (error: any) {
+        toast({
+            variant: "destructive",
+            title: "Failed to publish",
+            description: error.message || "Could not update the quiz settings."
+        })
+    }
+  };
+
+  const isActionDisabled = isAnalyzing || isPorting;
 
   return (
     <div className="p-4 md:p-8 relative min-h-screen">
@@ -483,7 +500,7 @@ export default function CreateQuizPage() {
                 className="text-base font-mono"
               />
             </div>
-            <Button onClick={handleAiParse} disabled={isAnalyzing || isSaving} className="w-full">
+            <Button onClick={handleAiParse} disabled={isAnalyzing || isPorting} className="w-full">
               {isAnalyzing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -500,54 +517,71 @@ export default function CreateQuizPage() {
         </Card>
       </div>
 
-        {/* Action Bar */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/90 p-4 backdrop-blur-sm">
-            <div className="mx-auto flex max-w-4xl items-center justify-end gap-4">
-                <Button
-                    variant="secondary"
-                    onClick={() => handleSave('start')}
-                    disabled={isActionDisabled}
-                >
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                    Start Quiz Now
-                </Button>
-                <Button
-                    onClick={() => handleSave('publish')}
-                    disabled={isActionDisabled}
-                >
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
-                    Publish & Share
-                </Button>
-            </div>
-        </div>
+      {/* "Finalize" Floating Action Button */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <Button
+          onClick={handleFinalize}
+          disabled={isActionDisabled}
+          size="lg"
+          className="rounded-full shadow-lg h-16 w-auto px-6"
+        >
+          {isPorting ? (
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          ) : (
+            <Rocket className="mr-2 h-5 w-5" />
+          )}
+          Finalize & Port to Engine
+        </Button>
+      </div>
 
-        {/* Success Modal */}
-        <AlertDialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Quiz Published Successfully!</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        Anyone with this link can now attempt your quiz.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="space-y-2 pt-2">
-                  <Label htmlFor="share-link" className="text-sm font-medium">Shareable Link</Label>
-                  <div className="flex gap-2">
-                    <Input id="share-link" readOnly value={`${window.location.origin}/quiz/${publishedQuizId}`} />
-                    <Button onClick={copyLinkToClipboard} variant="outline" size="icon">
-                        <Clipboard className="h-4 w-4" />
-                        <span className="sr-only">Copy Link</span>
-                    </Button>
-                  </div>
-                </div>
-                <AlertDialogFooter className="mt-4">
-                    <Button variant="outline" onClick={() => router.push('/dashboard')}>
-                        Go to Dashboard
-                    </Button>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+      {/* "Porting" Overlay */}
+      <AlertDialog open={isPorting}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-center">Porting Quiz to Engine...</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Please wait while we finalize your quiz configuration.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Progress value={uploadProgress} className="w-full" />
+            <p className="text-center text-sm text-muted-foreground mt-2">{uploadProgress}%</p>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* "Mission Control" Success Modal */}
+      <AlertDialog open={isReady} onOpenChange={setIsReady}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader className="items-center text-center">
+            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-full w-fit">
+                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <AlertDialogTitle>Quiz Engine Ready</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your quiz has been successfully ported and is ready for action.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <Button onClick={handleStartProtocol} className="h-auto py-3">
+              <Rocket className="mr-2"/>
+              Start Protocol
+            </Button>
+            <Button onClick={handlePublishAndShare} variant="secondary" className="h-auto py-3">
+              <Share2 className="mr-2"/>
+              Publish & Share
+            </Button>
+          </div>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setIsReady(false)}>
+              Close
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
 }
+
+    
