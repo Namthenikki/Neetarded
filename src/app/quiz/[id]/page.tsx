@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert } from "lucide-react";
+import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 
 type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
@@ -204,7 +205,7 @@ export default function QuizPage() {
   
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {(status === 'active' && quiz && currentQuestion) && (
+      {(status === 'active' || status === 'submitting') && quiz && currentQuestion && (
         <>
           <header className="sticky top-0 z-10 flex flex-col pt-2 bg-background">
             <div className="flex items-center justify-between p-3">
@@ -274,6 +275,19 @@ export default function QuizPage() {
           </footer>
         </>
       )}
+       <AlertDialog open={status === 'submitting'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-center">Submitting Your Answers...</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Please wait while we calculate your score. Do not close this page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
