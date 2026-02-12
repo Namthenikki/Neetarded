@@ -7,6 +7,7 @@ import {
   LogOut,
   User as UserIcon,
   Settings,
+  BookPlus,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -27,6 +28,7 @@ import { Button } from "../ui/button";
 
 const navLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/dashboard/create", icon: BookPlus, label: "Create Quiz" },
   { href: "/dashboard/quizzes", icon: BookCopy, label: "Quizzes" },
   { href: "/dashboard/performance", icon: BarChart3, label: "Performance" },
   { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
@@ -57,7 +59,7 @@ export function SidebarNav() {
                 href={link.href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary",
-                  pathname.startsWith(link.href) && link.href !== '/dashboard' || pathname === link.href ? "bg-primary/10 text-primary font-medium" : ""
+                  (pathname.startsWith(link.href) && link.href !== '/dashboard') || pathname === link.href ? "bg-primary/10 text-primary font-medium" : ""
                 )}
               >
                 <link.icon className="h-5 w-5" />
