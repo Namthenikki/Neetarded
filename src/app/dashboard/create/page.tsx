@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Save, Trash2, BookPlus, Loader2 } from "lucide-react";
+import { Plus, Save, Trash2, BookPlus, Loader2, BrainCircuit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +20,14 @@ import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
+import { parseQuiz } from "@/ai/flows/quiz-parser";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 
 export default function CreateQuizPage() {
   const { user } = useAuth();
@@ -32,10 +40,11 @@ export default function CreateQuizPage() {
     positiveMarks: 4,
     negativeMarks: -1,
   });
-  const [structure, setStructure] = useState<Section[]>([]);
+  const [structure, setStructure] = useState<QuizStructure>([]);
   const [questions, setQuestions] = useState("");
   const [answers, setAnswers] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const getAllBinaryCodes = () => {
     return structure.flatMap((section) =>
@@ -74,6 +83,7 @@ export default function CreateQuizPage() {
       const newChapter: Chapter = {
         name,
         binaryCode: generateBinaryCode(existingCodes),
+        questions: [],
       };
       section.chapters.push(newChapter);
       setStructure(newStructure);
@@ -130,6 +140,59 @@ export default function CreateQuizPage() {
     return true;
   };
 
+  const handleAiParse = async () => {
+    if (!questions || !answers) {
+      toast({
+        variant: "destructive",
+        title: "Missing Content",
+        description: "Please paste both questions and the answer key.",
+      });
+      return;
+    }
+    if (structure.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Structure Not Defined",
+        description: "Please define at least one section and chapter before parsing.",
+      });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      const structureForAi = structure.map(section => ({
+        id: section.id,
+        name: section.name,
+        chapters: section.chapters.map(chapter => ({
+          name: chapter.name,
+          binaryCode: chapter.binaryCode,
+        })),
+      }));
+
+      const result = await parseQuiz({
+        rawQuestions: questions,
+        rawAnswers: answers,
+        structure: structureForAi,
+      });
+
+      setStructure(result.parsedStructure);
+
+      toast({
+        title: "AI Analysis Complete",
+        description: "Questions have been parsed and added to the structure.",
+      });
+    } catch (error) {
+      console.error("AI parsing error:", error);
+      toast({
+        variant: "destructive",
+        title: "AI Parsing Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleSaveDraft = async () => {
     if (!title) {
       toast({ variant: "destructive", title: "Title is required." });
@@ -149,17 +212,11 @@ export default function CreateQuizPage() {
     try {
       const quizId = `${title.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
 
-      const finalStructure: QuizStructure = structure.map(s => ({
-        id: s.id,
-        name: s.name,
-        chapters: s.chapters,
-      }));
-
       await setDoc(doc(db, "quizzes", quizId), {
         id: quizId,
         title,
         settings,
-        structure: finalStructure,
+        structure: structure,
         isPublished: false,
         createdAt: new Date(),
         ownerId: user.uid,
@@ -272,7 +329,7 @@ export default function CreateQuizPage() {
           <CardHeader>
             <CardTitle>2. Quiz Structure</CardTitle>
             <CardDescription>
-              Define the sections and chapters for your quiz.
+              Define sections and chapters. Use the AI parser to fill them with questions.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -309,28 +366,45 @@ export default function CreateQuizPage() {
                   <CardContent className="p-4">
                     <ul className="space-y-2">
                       {section.chapters.map((chapter) => (
-                        <li
-                          key={chapter.binaryCode}
-                          className="flex items-center justify-between"
-                        >
-                          <span>{chapter.name}</span>
-                          <div className="flex items-center gap-2">
-                            <code className="text-sm bg-muted px-2 py-1 rounded">
-                              {chapter.binaryCode}
-                            </code>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() =>
-                                handleRemoveChapter(
-                                  section.id,
-                                  chapter.binaryCode
-                                )
-                              }
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive/70" />
-                            </Button>
-                          </div>
+                        <li key={chapter.binaryCode}>
+                          <Accordion type="single" collapsible className="w-full border-b-0">
+                            <AccordionItem value={chapter.binaryCode} className="border-b-0">
+                              <AccordionTrigger className="hover:no-underline rounded-md hover:bg-muted/50 p-2 -mb-2">
+                                <div className="flex flex-1 items-center justify-between pr-4">
+                                  <span className="font-normal">{chapter.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    <code className="text-sm bg-muted px-2 py-1 rounded">
+                                      {chapter.binaryCode}
+                                    </code>
+                                    <Badge variant="secondary">{chapter.questions?.length || 0} Qs</Badge>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveChapter(section.id, chapter.binaryCode);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive/70" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                <div className="pl-4 pt-2 space-y-2 text-sm text-muted-foreground">
+                                  {chapter.questions && chapter.questions.length > 0 ? (
+                                    chapter.questions.map((q, i) => (
+                                      <div key={i} className="border-l-2 pl-2">
+                                        <p><strong>Q{q.questionNumber}:</strong> {q.text}</p>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="py-4 text-center">No questions parsed for this chapter yet.</p>
+                                  )}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
                         </li>
                       ))}
                     </ul>
@@ -362,7 +436,7 @@ export default function CreateQuizPage() {
           <CardHeader>
             <CardTitle>3. Add Questions</CardTitle>
             <CardDescription>
-              Paste your raw question text and the answer key below.
+              Paste your raw question text and the answer key below. Then click the AI button.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -388,8 +462,18 @@ export default function CreateQuizPage() {
                 className="text-base font-mono"
               />
             </div>
-            <Button disabled className="w-full">
-              Generate with AI (Coming Soon)
+            <Button onClick={handleAiParse} disabled={isAnalyzing || isSaving} className="w-full">
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <BrainCircuit className="mr-2 h-4 w-4" />
+                  Generate with AI
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -399,7 +483,7 @@ export default function CreateQuizPage() {
       <Button
         className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-50 md:bottom-8 md:right-8"
         onClick={handleSaveDraft}
-        disabled={isSaving}
+        disabled={isSaving || isAnalyzing}
       >
         {isSaving ? (
           <Loader2 className="h-7 w-7 animate-spin" />
@@ -411,5 +495,3 @@ export default function CreateQuizPage() {
     </div>
   );
 }
-
-    

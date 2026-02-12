@@ -4,6 +4,28 @@ export interface QuizSettings {
   negativeMarks: number;
 }
 
+export interface Question {
+  questionNumber: number;
+  text: string;
+  options: { id: string; text: string }[];
+  correctOptionId: string;
+  explanation?: string;
+}
+
+export interface Chapter {
+  name: string;
+  binaryCode: string; // 6-digit binary code
+  questions?: Question[];
+}
+
+export interface Section {
+  id: string; // e.g., "PHY", "CHE", "BIO"
+  name: string;
+  chapters: Chapter[];
+}
+
+export type QuizStructure = Section[];
+
 export interface Quiz {
   id: string;
   title: string;
@@ -12,26 +34,4 @@ export interface Quiz {
   isPublished: boolean;
   createdAt: Date;
   ownerId: string;
-}
-
-export type QuizStructure = Section[];
-
-export interface Section {
-  id: string; // e.g., "PHY", "CHE", "BIO"
-  name: string;
-  chapters: Chapter[];
-}
-
-export interface Chapter {
-  name: string;
-  binaryCode: string; // 6-digit binary code
-}
-
-export interface Question {
-  id: string;
-  text: string;
-  options: string[];
-  correctAnswer: string;
-  sectionId: string;
-  chapterBinaryCode: string;
 }
