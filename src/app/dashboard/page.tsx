@@ -29,8 +29,6 @@ export default function DashboardPage() {
       return;
     }
 
-    setLoading(true);
-
     // Set up real-time listener for new assignments.
     const assignmentsQuery = query(
       collection(db, "assigned_quizzes"),
@@ -62,6 +60,7 @@ export default function DashboardPage() {
 
     // Fetch past attempts.
     const fetchAttempts = async () => {
+        setLoading(true);
         console.log("Current Student ID:", user.studentId);
         try {
             // First attempt with ordering
