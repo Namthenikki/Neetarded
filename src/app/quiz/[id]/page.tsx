@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { cn, generateUniqueId } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, X } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,8 +41,9 @@ export default function QuizPage() {
 
   // Student Identity State
   const [studentId, setStudentId] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState('');
+  const [studentName, setStudentName] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
+  const [identityInput, setIdentityInput] = useState('');
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
     if (!quiz) return [];
@@ -63,17 +64,20 @@ export default function QuizPage() {
     return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
   }, [currentQuestionIndex, flatQuestions.length]);
 
+  const processIdentityName = (name: string) => {
+    return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
   useEffect(() => {
-    const storedId = localStorage.getItem('neetarded_student_id');
-    const storedName = localStorage.getItem('neetarded_student_name');
+    const storedStudentId = localStorage.getItem('neetarded_student_id');
 
     if (user) {
       setStudentId(user.uid);
       setStudentName(user.name);
       setIsGuest(false);
-    } else if (storedId && storedName) {
-      setStudentId(storedId);
-      setStudentName(storedName);
+    } else if (storedStudentId) {
+      setStudentId(storedStudentId);
+      setStudentName(storedStudentId); // For guests, ID and name are the same
       setIsGuest(true);
     } else {
       setIsGuest(true);
@@ -84,8 +88,9 @@ export default function QuizPage() {
 
   useEffect(() => {
     async function fetchQuiz() {
-      if (!quizId || status === 'needs_identity' || !studentId) return;
+      if (status === 'needs_identity' || !studentId) return;
       
+      setLoading(true);
       try {
         const quizDoc = await getDoc(doc(db, "quizzes", quizId));
         if (quizDoc.exists()) {
@@ -103,22 +108,29 @@ export default function QuizPage() {
       } catch (error) {
         console.error("Error fetching quiz:", error);
         setStatus('not_found');
+      } finally {
+        setLoading(false);
       }
     }
     fetchQuiz();
   }, [quizId, user, status, studentId]);
 
   const handleBeginExam = () => {
-    if (!studentName.trim()) {
-      alert("Please enter your name.");
+    const processedId = processIdentityName(identityInput);
+    if (!processedId) {
+      alert("Please enter a valid name.");
       return;
     }
-    const newId = `NT-${generateUniqueId()}`;
-    setStudentId(newId);
-    localStorage.setItem('neetarded_student_id', newId);
-    localStorage.setItem('neetarded_student_name', studentName);
-    setStatus('loading');
+    setStudentId(processedId);
+    setStudentName(processedId);
+    localStorage.setItem('neetarded_student_id', processedId);
+    setStatus('loading'); // Triggers fetchQuiz useEffect
   }
+  
+  const handleIdentityInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIdentityInput(processIdentityName(e.target.value));
+  };
+
 
   const handleSubmit = useCallback(async () => {
     if (status !== 'active' || !quiz || !studentId || !studentName) return;
@@ -212,15 +224,23 @@ export default function QuizPage() {
       <AnimatePresence>
         {status === 'needs_identity' && (
           <AlertDialog open={true}>
-            <AlertDialogContent asChild>
+            <AlertDialogContent asChild className="bg-background/80 backdrop-blur-sm border-white/10">
               <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="text-center text-2xl">Welcome to the Exam</AlertDialogTitle>
-                  <AlertDialogDescription className="text-center">Please enter your name to begin.</AlertDialogDescription>
+                  <AlertDialogTitle className="text-center text-2xl font-bold">Student Identity Required</AlertDialogTitle>
+                  <AlertDialogDescription className="text-center">Enter your name to begin. This will be your permanent ID.</AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-4 space-y-4">
-                  <Input placeholder="Your Full Name" value={studentName} onChange={e => setStudentName(e.target.value)} className="text-center text-lg h-12" autoFocus />
-                  <Button onClick={handleBeginExam} className="w-full h-12">Begin Exam</Button>
+                  <Input 
+                    placeholder="e.g. sourav" 
+                    value={identityInput} 
+                    onChange={handleIdentityInputChange} 
+                    className="text-center text-lg h-12" 
+                    autoFocus 
+                  />
+                  <Button onClick={handleBeginExam} className="w-full h-12 text-lg">
+                    Begin Exam
+                  </Button>
                 </div>
               </motion.div>
             </AlertDialogContent>
@@ -228,7 +248,7 @@ export default function QuizPage() {
         )}
       </AnimatePresence>
 
-      {status === 'active' && quiz && (
+      {(status === 'active' && quiz) && (
         <>
           <header className="sticky top-0 z-10 flex flex-col pt-2">
             <div className="flex items-center justify-between p-3">
@@ -301,3 +321,5 @@ export default function QuizPage() {
     </div>
   );
 }
+
+    
