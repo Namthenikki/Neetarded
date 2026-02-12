@@ -12,7 +12,7 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlusCircle, BarChart, FileText, Bell, Rocket } from "lucide-react";
+import { Loader2, PlusCircle, BarChart, FileText, Target, Rocket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function DashboardPage() {
@@ -63,6 +63,9 @@ export default function DashboardPage() {
         );
         
         unsubscribeAssignments = onSnapshot(assignmentsQuery, async (snapshot) => {
+          console.log("Current Student ID:", user.studentId);
+          console.log("Assigned Quizzes Found:", snapshot.docs.length);
+          
           const promises = snapshot.docs.map(async (assignmentDoc) => {
             const assignmentData = { id: assignmentDoc.id, ...assignmentDoc.data() } as AssignedQuiz;
             const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
@@ -114,20 +117,23 @@ export default function DashboardPage() {
       </header>
 
       {assignments.length > 0 && (
-        <Card className="rounded-2xl border-primary/20 bg-card/80 backdrop-blur-sm">
+        <Card className="rounded-2xl">
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bell className="text-primary"/> New Assignments</CardTitle>
-                <CardDescription>Your instructor has assigned these quizzes to you.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Target className="text-primary"/> Assigned Tasks</CardTitle>
+                <CardDescription>Your instructor has assigned these quizzes to you. They require your immediate attention.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 {assignments.map(assignment => (
-                  <div key={assignment.id} className="flex items-center justify-between rounded-xl border p-3 bg-slate-50">
-                     <div>
-                        <p className="font-semibold text-slate-800">{assignment.quizTitle}</p>
-                        <p className="text-xs text-slate-500">Assigned on {format(assignment.assignedAt.toDate(), "PP")}</p>
+                  <div key={assignment.id} className="flex items-center justify-between rounded-xl border-l-4 border-primary bg-slate-50 p-4 shadow-sm">
+                     <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                            <p className="font-semibold text-slate-800">{assignment.quizTitle}</p>
+                            <Badge variant="secondary">Admin Assigned</Badge>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Assigned on {format(assignment.assignedAt.toDate(), "PP")}</p>
                       </div>
-                      <Button asChild size="sm">
-                          <Link href={`/quiz/${assignment.quizId}`}><Rocket/> Start Now</Link>
+                      <Button asChild>
+                          <Link href={`/quiz/${assignment.quizId}`}><Rocket className="mr-2"/> Start Now</Link>
                       </Button>
                   </div>
                 ))}
