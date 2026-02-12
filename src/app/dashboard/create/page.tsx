@@ -136,35 +136,19 @@ export default function CreateQuizPage() {
     const sectionIds = new Set<string>();
     for (const section of structure) {
       if (!section.name.trim() || !section.id.trim()) {
-        toast({
-          variant: "destructive",
-          title: "Incomplete Section",
-          description: `Please provide a name and ID for all sections.`,
-        });
+        alert(`Incomplete Section: Please provide a name and ID for all sections.`);
         return false;
       }
       if (section.id.length !== 3) {
-        toast({
-          variant: "destructive",
-          title: "Invalid Section ID",
-          description: `Section ID "${section.id}" must be 3 characters long.`,
-        });
+        alert(`Invalid Section ID: Section ID "${section.id}" must be 3 characters long.`);
         return false;
       }
       if (sectionIds.has(section.id)) {
-        toast({
-          variant: "destructive",
-          title: "Duplicate Section ID",
-          description: `Section ID "${section.id}" must be unique.`,
-        });
+        alert(`Duplicate Section ID: Section ID "${section.id}" must be unique.`);
         return false;
       }
       if (section.chapters.some(ch => !ch.name.trim())) {
-         toast({
-          variant: "destructive",
-          title: "Incomplete Chapter",
-          description: `Please provide a name for all chapters in section "${section.name}".`,
-        });
+         alert(`Incomplete Chapter: Please provide a name for all chapters in section "${section.name}".`);
         return false;
       }
       sectionIds.add(section.id);
@@ -228,22 +212,14 @@ export default function CreateQuizPage() {
   const handleSave = async (action: "start" | "publish") => {
     console.log("Button Clicked:", action);
     if (!title || !hasQuestions) {
-      toast({
-        variant: "destructive",
-        title: "Missing Information",
-        description: "Please provide a Quiz Title and add questions before saving.",
-      });
+      alert("Please add a Title and Questions first!");
       return;
     }
     if (!validateStructure()) {
       return;
     }
     if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Authentication Error",
-        description: "You must be logged in to save a quiz.",
-      });
+      alert("You must be logged in to save a quiz.");
       return;
     }
 
@@ -258,29 +234,22 @@ export default function CreateQuizPage() {
         createdAt: new Date(),
         ownerId: user.uid,
       };
+
+      console.log("Saving Quiz Payload:", quizPayload);
       
       const docRef = await addDoc(collection(db, "quizzes"), quizPayload);
-      // Now update the document with its own ID
       await setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
 
       if (action === 'start') {
-        toast({
-            title: "Draft Saved!",
-            description: "Starting your quiz now...",
-        });
-        router.push(`/quiz/${docRef.id}`);
+        window.location.assign(`/quiz/${docRef.id}`);
       } else { // publish
         setPublishedQuizId(docRef.id);
         setShowSuccessModal(true);
       }
 
-    } catch (error) {
-      console.error("Error saving quiz:", error);
-      toast({
-        variant: "destructive",
-        title: "Uh oh! Something went wrong.",
-        description: "Could not save the quiz.",
-      });
+    } catch (error: any) {
+      console.error("Save failed:", error);
+      alert("Error saving quiz: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -570,5 +539,7 @@ export default function CreateQuizPage() {
 
     </div>
   );
+
+    
 
     
