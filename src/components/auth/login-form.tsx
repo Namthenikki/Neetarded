@@ -49,7 +49,16 @@ export function LoginForm() {
         title: "Login Successful",
         description: "Welcome back! Redirecting to your dashboard.",
       });
+
       router.push("/dashboard");
+
+      // Fallback for environments where router.push might fail
+      setTimeout(() => {
+        if (window.location.pathname.includes('/login')) {
+          window.location.href = '/dashboard';
+        }
+      }, 1500);
+
     } catch (error: any) {
       console.error("Login error:", error);
       toast({
@@ -57,8 +66,7 @@ export function LoginForm() {
         title: "Login Failed",
         description: error.message || "An unexpected error occurred. Please try again.",
       });
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Only set loading to false on error
     }
   }
 
@@ -100,7 +108,14 @@ export function LoginForm() {
               )}
             />
             <Button type="submit" className="w-full h-12" disabled={isLoading}>
-              {isLoading ? <Loader2 className="animate-spin" /> : "Sign In"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  <span>Redirecting...</span>
+                </>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
         </Form>
