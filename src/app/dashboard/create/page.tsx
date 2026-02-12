@@ -13,12 +13,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { generateBinaryCode } from "@/lib/binaryUtils";
 import type { QuizStructure, Section, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
@@ -38,7 +32,7 @@ export default function CreateQuizPage() {
     positiveMarks: 4,
     negativeMarks: -1,
   });
-  const [structure, setStructure] = useState<QuizStructure>([]);
+  const [structure, setStructure] = useState<Section[]>([]);
   const [questions, setQuestions] = useState("");
   const [answers, setAnswers] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -50,40 +44,40 @@ export default function CreateQuizPage() {
   };
 
   const handleAddSection = () => {
-    const name = prompt("Enter section name (e.g., Physics):");
-    const id = prompt("Enter a 3-char unique ID (e.g., PHY):");
-
-    if (name && id && id.length === 3 && !structure.find((s) => s.id === id)) {
-      setStructure([...structure, { id: id.toUpperCase(), name, chapters: [] }]);
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Invalid Section",
-        description: "Section name and a unique 3-char ID are required.",
-      });
-    }
+    setStructure([...structure, { id: "", name: "", chapters: [] }]);
   };
 
-  const handleAddChapter = (sectionId: string) => {
+  const handleUpdateSection = (
+    index: number,
+    field: "name" | "id",
+    value: string
+  ) => {
+    const newStructure = [...structure];
+    let processedValue = value;
+    if (field === "id") {
+      processedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
+    }
+    newStructure[index] = { ...newStructure[index], [field]: processedValue };
+    setStructure(newStructure);
+  };
+
+  const handleRemoveSection = (index: number) => {
+    setStructure(structure.filter((_, i) => i !== index));
+  };
+
+  const handleAddChapter = (sectionIndex: number) => {
     const name = prompt("Enter chapter name:");
     if (name) {
-      const newStructure = structure.map((section) => {
-        if (section.id === sectionId) {
-          const existingCodes = getAllBinaryCodes();
-          const newChapter: Chapter = {
-            name,
-            binaryCode: generateBinaryCode(existingCodes),
-          };
-          return { ...section, chapters: [...section.chapters, newChapter] };
-        }
-        return section;
-      });
+      const newStructure = [...structure];
+      const section = newStructure[sectionIndex];
+      const existingCodes = getAllBinaryCodes();
+      const newChapter: Chapter = {
+        name,
+        binaryCode: generateBinaryCode(existingCodes),
+      };
+      section.chapters.push(newChapter);
       setStructure(newStructure);
     }
-  };
-
-  const handleRemoveSection = (sectionId: string) => {
-    setStructure(structure.filter((s) => s.id !== sectionId));
   };
 
   const handleRemoveChapter = (
@@ -104,9 +98,44 @@ export default function CreateQuizPage() {
     setStructure(newStructure);
   };
 
+  const validateStructure = () => {
+    const sectionIds = new Set<string>();
+    for (const section of structure) {
+      if (!section.name.trim() || !section.id.trim()) {
+        toast({
+          variant: "destructive",
+          title: "Incomplete Section",
+          description: `Please provide a name and ID for all sections.`,
+        });
+        return false;
+      }
+      if (section.id.length !== 3) {
+        toast({
+          variant: "destructive",
+          title: "Invalid Section ID",
+          description: `Section ID "${section.id}" must be 3 characters long.`,
+        });
+        return false;
+      }
+      if (sectionIds.has(section.id)) {
+        toast({
+          variant: "destructive",
+          title: "Duplicate Section ID",
+          description: `Section ID "${section.id}" must be unique.`,
+        });
+        return false;
+      }
+      sectionIds.add(section.id);
+    }
+    return true;
+  };
+
   const handleSaveDraft = async () => {
     if (!title) {
       toast({ variant: "destructive", title: "Title is required." });
+      return;
+    }
+    if (!validateStructure()) {
       return;
     }
     if (!user) {
@@ -120,11 +149,17 @@ export default function CreateQuizPage() {
     try {
       const quizId = `${title.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
 
+      const finalStructure: QuizStructure = structure.map(s => ({
+        id: s.id,
+        name: s.name,
+        chapters: s.chapters,
+      }));
+
       await setDoc(doc(db, "quizzes", quizId), {
         id: quizId,
         title,
         settings,
-        structure,
+        structure: finalStructure,
         isPublished: false,
         createdAt: new Date(),
         ownerId: user.uid,
@@ -210,18 +245,23 @@ export default function CreateQuizPage() {
               </div>
               <div>
                 <Label htmlFor="negative-marks">Negative Marks</Label>
-                <Input
-                  id="negative-marks"
-                  type="number"
-                  value={settings.negativeMarks}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      negativeMarks: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  className="text-lg"
-                />
+                 <div className="relative flex items-center">
+                  <span className="absolute left-3 text-lg text-muted-foreground">-</span>
+                  <Input
+                    id="negative-marks"
+                    type="number"
+                    min="0"
+                    value={Math.abs(settings.negativeMarks)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setSettings({
+                        ...settings,
+                        negativeMarks: val > 0 ? -val : 0,
+                      });
+                    }}
+                    className="pl-7 text-lg"
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
@@ -236,28 +276,38 @@ export default function CreateQuizPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Accordion type="multiple" className="w-full">
-              {structure.map((section) => (
-                <AccordionItem value={section.id} key={section.id}>
-                  <AccordionTrigger className="text-lg font-semibold hover:no-underline">
-                    <div className="flex items-center justify-between w-full pr-4">
-                      <span>
-                        {section.name} ({section.id})
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveSection(section.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+            <div className="space-y-4">
+              {structure.map((section, index) => (
+                <Card key={index} className="overflow-hidden bg-background">
+                  <CardHeader className="flex flex-row items-center justify-between bg-muted/30 p-3">
+                    <div className="flex flex-1 items-center gap-4">
+                      <Input
+                        placeholder="Section Name (e.g., Physics)"
+                        value={section.name}
+                        onChange={(e) =>
+                          handleUpdateSection(index, "name", e.target.value)
+                        }
+                        className="text-lg font-semibold border-0 focus-visible:ring-1"
+                      />
+                      <Input
+                        placeholder="ID"
+                        value={section.id}
+                        onChange={(e) =>
+                          handleUpdateSection(index, "id", e.target.value)
+                        }
+                        className="w-24 text-lg font-mono tracking-widest border-0 focus-visible:ring-1"
+                      />
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <ul className="space-y-2 pl-4">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveSection(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <ul className="space-y-2">
                       {section.chapters.map((chapter) => (
                         <li
                           key={chapter.binaryCode}
@@ -288,14 +338,15 @@ export default function CreateQuizPage() {
                       variant="outline"
                       size="sm"
                       className="mt-4"
-                      onClick={() => handleAddChapter(section.id)}
+                      onClick={() => handleAddChapter(index)}
+                      disabled={!section.id}
                     >
                       <Plus className="mr-2 h-4 w-4" /> Add Chapter
                     </Button>
-                  </AccordionContent>
-                </AccordionItem>
+                  </CardContent>
+                </Card>
               ))}
-            </Accordion>
+            </div>
             <Button
               className="mt-4 w-full"
               variant="outline"
@@ -360,3 +411,5 @@ export default function CreateQuizPage() {
     </div>
   );
 }
+
+    
