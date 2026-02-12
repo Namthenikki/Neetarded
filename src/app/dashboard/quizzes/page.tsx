@@ -7,9 +7,9 @@ import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import { type Quiz } from "@/types/quiz";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Clock, PlusCircle, Loader2 } from "lucide-react";
+import { FileText, Clock, PlusCircle, Loader2, BarChart3, Rocket } from "lucide-react";
 import { format } from "date-fns";
 
 export default function QuizzesPage() {
@@ -26,6 +26,7 @@ export default function QuizzesPage() {
         const userQuizzes = querySnapshot.docs.map((doc) => {
             const data = doc.data();
             return {
+                id: doc.id,
                 ...data,
                 // Firestore Timestamps need to be converted to JS Dates
                 createdAt: data.createdAt.toDate(),
@@ -89,13 +90,18 @@ export default function QuizzesPage() {
                     </div>
                  </div>
               </CardContent>
-              <div className="p-6 pt-0">
+              <CardFooter className="grid grid-cols-2 gap-2 pt-0">
                 <Button asChild className="w-full">
                   <Link href={`/quiz/${quiz.id}`}>
-                    Start Quiz
+                    <Rocket /> Start
                   </Link>
                 </Button>
-              </div>
+                <Button asChild variant="secondary" className="w-full">
+                  <Link href={`/dashboard/stats/${quiz.id}`}>
+                    <BarChart3 /> Stats
+                  </Link>
+                </Button>
+              </CardFooter>
             </Card>
           ))}
         </div>

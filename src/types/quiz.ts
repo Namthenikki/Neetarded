@@ -37,13 +37,25 @@ export interface Quiz {
   ownerId: string;
 }
 
+export interface SectionPerformance {
+  sectionId: string;
+  sectionName: string;
+  totalQuestions: number;
+  correct: number;
+  incorrect: number;
+  accuracy: number;
+}
 
 export interface QuizAttempt {
   id?: string;
   quizId: string;
   quizTitle: string;
-  userId: string;
-  userName: string;
+  userId: string; // Firebase auth UID or 'guest'
+  
+  studentId: string; // The persistent guest/student ID
+  studentName: string; // The guest/student name
+  isGuest: boolean;
+
   answers: { [questionNumber: number]: string };
   score: number;
   totalQuestions: number;
@@ -52,4 +64,6 @@ export interface QuizAttempt {
   unattempted: number;
   timeTaken: number; // in seconds
   completedAt: any; // Allow Firestore Timestamp
+
+  sectionPerformance: SectionPerformance[];
 }

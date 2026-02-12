@@ -7,17 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit } from 'lucide-react';
+import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit, Share2, Download } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 import { type QuizAttempt, type Quiz, type Question } from '@/types/quiz';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer, Bar, BarChart as RechartsBarChart, XAxis, YAxis, Tooltip } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
+import html2canvas from 'html2canvas';
 
 interface FlatQuestion extends Question {
   sectionId: string;
@@ -28,7 +28,7 @@ interface FlatQuestion extends Question {
 
 // --- Internal Components for UI Zones ---
 
-const VitalSigns = ({ analysis }: { analysis: any }) => {
+const VitalSigns = ({ analysis, attempt }: { analysis: any, attempt: QuizAttempt }) => {
   if (!analysis) return null;
   const scorePercentage = (analysis.score / analysis.maxScore) * 100;
   const scoreColor = scorePercentage > 80 ? 'text-green-500' : scorePercentage > 50 ? 'text-yellow-500' : 'text-red-500';
@@ -43,28 +43,15 @@ const VitalSigns = ({ analysis }: { analysis: any }) => {
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-bold tracking-tight">Vital Signs</CardTitle>
-        <CardDescription>Your overall performance at a glance.</CardDescription>
+        <CardDescription>Overall performance for {attempt.studentName} ({attempt.studentId})</CardDescription>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
         <div className="flex flex-col items-center justify-center">
           <div className="relative h-48 w-48">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie
-                  data={gaugeData}
-                  cx="50%"
-                  cy="50%"
-                  startAngle={180}
-                  endAngle={0}
-                  innerRadius={60}
-                  outerRadius={80}
-                  dataKey="value"
-                  stroke="none"
-                  paddingAngle={2}
-                >
-                  {gaugeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={GAUGE_COLORS[index % GAUGE_COLORS.length]} />
-                  ))}
+                <Pie data={gaugeData} cx="50%" cy="50%" startAngle={180} endAngle={0} innerRadius={60} outerRadius={80} dataKey="value" stroke="none" paddingAngle={2}>
+                  {gaugeData.map((entry, index) => (<Cell key={`cell-${index}`} fill={GAUGE_COLORS[index % GAUGE_COLORS.length]} />))}
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
@@ -81,29 +68,25 @@ const VitalSigns = ({ analysis }: { analysis: any }) => {
         <div className="grid grid-cols-2 gap-4">
             <Card className="p-4 bg-background">
                 <CardHeader className="p-0 flex-row items-center justify-between">
-                    <CardTitle className="text-sm font-medium">Correct</CardTitle>
-                    <Check className="h-4 w-4 text-green-500"/>
+                    <CardTitle className="text-sm font-medium">Correct</CardTitle> <Check className="h-4 w-4 text-green-500"/>
                 </CardHeader>
                 <p className="text-2xl font-bold mt-2">{analysis.stats.correct}</p>
             </Card>
             <Card className="p-4 bg-background">
                 <CardHeader className="p-0 flex-row items-center justify-between">
-                    <CardTitle className="text-sm font-medium">Incorrect</CardTitle>
-                    <X className="h-4 w-4 text-red-500"/>
+                    <CardTitle className="text-sm font-medium">Incorrect</CardTitle> <X className="h-4 w-4 text-red-500"/>
                 </CardHeader>
                 <p className="text-2xl font-bold mt-2">{analysis.stats.incorrect}</p>
             </Card>
             <Card className="p-4 bg-background">
                 <CardHeader className="p-0 flex-row items-center justify-between">
-                    <CardTitle className="text-sm font-medium">Skipped</CardTitle>
-                    <ChevronsRight className="h-4 w-4 text-muted-foreground"/>
+                    <CardTitle className="text-sm font-medium">Skipped</CardTitle> <ChevronsRight className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <p className="text-2xl font-bold mt-2">{analysis.stats.skipped}</p>
             </Card>
             <Card className="p-4 bg-background">
                 <CardHeader className="p-0 flex-row items-center justify-between">
-                    <CardTitle className="text-sm font-medium">Time Taken</CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground"/>
+                    <CardTitle className="text-sm font-medium">Time Taken</CardTitle> <Clock className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <p className="text-2xl font-bold mt-2">{analysis.timeTaken.minutes}m {analysis.timeTaken.seconds}s</p>
             </Card>
@@ -201,15 +184,12 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                                         const isSelected = opt.id === userAnswerId;
 
                                         return (
-                                            <Button
-                                                key={opt.id}
-                                                variant="outline"
+                                            <Button key={opt.id} variant="outline"
                                                 className={cn("w-full h-auto min-h-[44px] justify-between text-left p-3 text-sm whitespace-normal relative", {
                                                     "bg-green-600/20 border-green-600 text-green-900 dark:text-green-200 font-semibold": isCorrect,
                                                     "bg-red-500/20 border-red-500 text-red-900 dark:text-red-200": isSelected && !isCorrect,
                                                     "bg-muted/50": !isSelected && !isCorrect,
-                                                })}
-                                            >
+                                                })}>
                                                <div><span className="font-semibold mr-2">{opt.id}.</span> {opt.text}</div>
                                                {isSelected && !isCorrect && <X className="h-4 w-4 ml-2" />}
                                                {isCorrect && <Check className="h-4 w-4 ml-2" />}
@@ -220,9 +200,7 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                                 {(q.explanation) && (
                                   <div className="mt-4 p-3 bg-accent/30 rounded-lg">
                                       <p className="text-sm font-semibold text-accent-foreground flex items-center gap-2"><BrainCircuit className="h-4 w-4"/> AI Analysis</p>
-                                      <p className="text-xs text-accent-foreground/80 mt-1">
-                                          {q.explanation}
-                                      </p>
+                                      <p className="text-xs text-accent-foreground/80 mt-1"> {q.explanation} </p>
                                   </div>
                                 )}
                             </CardContent>
@@ -233,6 +211,35 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
         </Card>
     )
 }
+
+const ShareCard = ({ analysis, attempt, quiz, forwardedRef }: { analysis: any, attempt: any, quiz: any, forwardedRef: any }) => {
+    if (!analysis) return null;
+    const scorePercentage = (analysis.score / analysis.maxScore) * 100;
+    return (
+        <div ref={forwardedRef} className="w-[350px] h-[622px] bg-slate-800 text-white p-6 flex flex-col justify-between font-sans">
+            <div>
+                <p className="text-lg">I scored</p>
+                <p className="text-7xl font-bold text-cyan-400">{analysis.score}<span className="text-4xl text-slate-400"> / {analysis.maxScore}</span></p>
+                <p className="text-lg mt-2">on the <span className="font-bold">{quiz.title}</span></p>
+            </div>
+            <div className="space-y-4">
+                <div className="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
+                    <p>Accuracy</p>
+                    <p className="text-2xl font-bold">{analysis.accuracy.toFixed(1)}%</p>
+                </div>
+                <div className="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
+                    <p>Mistakes</p>
+                    <p className="text-2xl font-bold">{analysis.stats.incorrect}</p>
+                </div>
+            </div>
+            <div className="text-center">
+                <p className="text-2xl font-bold tracking-tight">Neetarded</p>
+                <p className="text-cyan-400">Challenge me!</p>
+            </div>
+        </div>
+    )
+}
+
 
 // --- Main Page Component ---
 
@@ -248,40 +255,29 @@ export default function ResultPage() {
     const [quiz, setQuiz] = useState<Quiz | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const shareCardRef = useRef(null);
 
     useEffect(() => {
         async function fetchResults() {
-            if (!attemptId || !user) {
-                setError("Attempt ID or user not found.");
-                setLoading(false);
-                return;
-            }
+            if (!attemptId) { setError("Attempt ID not found."); setLoading(false); return; }
+            // User check is relaxed here so anyone with the link can see the result.
+            // A real app would have stricter rules.
             try {
                 setLoading(true);
                 const attemptDoc = await getDoc(doc(db, "attempts", attemptId));
-                if (!attemptDoc.exists() || attemptDoc.data().userId !== user.uid) {
-                    setError("Attempt not found or you do not have permission to view it.");
-                    return;
-                }
+                if (!attemptDoc.exists()) { setError("Attempt not found."); return; }
                 const attemptData = attemptDoc.data() as QuizAttempt;
 
                 const quizDoc = await getDoc(doc(db, "quizzes", attemptData.quizId));
-                if (!quizDoc.exists()) {
-                    setError("Associated quiz not found.");
-                    return;
-                }
+                if (!quizDoc.exists()) { setError("Associated quiz not found."); return; }
 
                 setAttempt(attemptData);
                 setQuiz(quizDoc.data() as Quiz);
 
             } catch (e: any) {
-                console.error("Error fetching results:", e);
                 setError(e.message || "An unknown error occurred.");
             } finally {
-                // Simulate analysis time
-                setTimeout(() => {
-                    setLoading(false);
-                }, 1500);
+                setTimeout(() => setLoading(false), 1500);
             }
         }
         fetchResults();
@@ -291,13 +287,7 @@ export default function ResultPage() {
         if (!quiz) return [];
         return quiz.structure.flatMap(section => 
             section.chapters.flatMap(chapter => 
-                (chapter.questions || []).map(q => ({
-                    ...q,
-                    sectionId: section.id,
-                    sectionName: section.name,
-                    chapterBinaryCode: chapter.binaryCode,
-                    chapterName: chapter.name
-                }))
+                (chapter.questions || []).map(q => ({...q, sectionId: section.id, sectionName: section.name, chapterBinaryCode: chapter.binaryCode, chapterName: chapter.name}))
             )
         );
     }, [quiz]);
@@ -305,72 +295,47 @@ export default function ResultPage() {
     const analysis = useMemo(() => {
         if (!attempt || !quiz || flatQuestions.length === 0) return null;
 
-        let correct = 0;
-        let incorrect = 0;
-        let attemptedCount = 0;
-        const subjectStats: { [key: string]: { correct: number, incorrect: number, name: string } } = {};
-
-        quiz.structure.forEach(s => {
-            subjectStats[s.id] = { correct: 0, incorrect: 0, name: s.name };
-        });
-
-        flatQuestions.forEach(q => {
-            const userAnswer = attempt.answers[q.questionNumber];
-            if (userAnswer) {
-                attemptedCount++;
-                if (userAnswer === q.correctOptionId) {
-                    correct++;
-                    subjectStats[q.sectionId].correct++;
-                } else {
-                    incorrect++;
-                    subjectStats[q.sectionId].incorrect++;
-                }
-            }
-        });
-
-        const score = (correct * quiz.settings.positiveMarks) + (incorrect * quiz.settings.negativeMarks);
+        const score = attempt.score;
         const maxScore = flatQuestions.length * quiz.settings.positiveMarks;
-        const accuracy = attemptedCount > 0 ? (correct / attemptedCount) * 100 : 0;
-
-        const subjectPerformance = Object.entries(subjectStats).map(([id, stats]) => {
-            const total = stats.correct + stats.incorrect;
-            return {
-                id,
-                name: stats.name,
-                accuracy: total > 0 ? (stats.correct / total) * 100 : 0,
-                correct: stats.correct,
-                incorrect: stats.incorrect,
-            };
-        });
-
+        const attemptedCount = attempt.correctAnswers + attempt.incorrectAnswers;
+        const accuracy = attemptedCount > 0 ? (attempt.correctAnswers / attemptedCount) * 100 : 0;
+        
         return {
-            score,
-            maxScore,
-            accuracy,
-            timeTaken: {
-                minutes: Math.floor(attempt.timeTaken / 60),
-                seconds: Math.floor(attempt.timeTaken % 60),
-            },
-            stats: {
-                correct,
-                incorrect,
-                skipped: flatQuestions.length - attemptedCount
-            },
-            subjectPerformance
+            score, maxScore, accuracy,
+            timeTaken: { minutes: Math.floor(attempt.timeTaken / 60), seconds: Math.floor(attempt.timeTaken % 60), },
+            stats: { correct: attempt.correctAnswers, incorrect: attempt.incorrectAnswers, skipped: attempt.unattempted },
+            subjectPerformance: attempt.sectionPerformance.map(p => ({name: p.sectionName, accuracy: p.accuracy, correct: p.correct, incorrect: p.incorrect}))
         };
     }, [attempt, quiz, flatQuestions]);
+
+    const handleGenerateCard = async () => {
+        if (!shareCardRef.current) return;
+        try {
+            const canvas = await html2canvas(shareCardRef.current, { backgroundColor: null });
+            const image = canvas.toDataURL("image/png");
+            const link = document.createElement('a');
+            link.href = image;
+            link.download = `neetarded-result-${attempt?.quizTitle.replace(/\s+/g, '-')}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Failed to generate share card:", error);
+            alert("Could not generate share card.");
+        }
+    };
     
     if (loading) {
         return (
             <div className="flex h-screen w-full flex-col items-center justify-center bg-background text-center p-4">
                 <Loader2 className="h-12 w-12 text-primary animate-spin mb-4"/>
                 <h1 className="text-2xl font-bold text-foreground">Analyzing Results...</h1>
-                <p className="text-muted-foreground">Please wait while we generate your performance report.</p>
+                <p className="text-muted-foreground">Generating your performance report.</p>
             </div>
         );
     }
     
-    if (error || !analysis) {
+    if (error || !analysis || !attempt) {
         return (
              <div className="flex h-screen items-center justify-center text-center p-4">
                 <div>
@@ -388,25 +353,27 @@ export default function ResultPage() {
     return (
         <motion.div 
             className="min-h-screen bg-slate-50 dark:bg-background p-4 md:p-8 space-y-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-        >
-            <VitalSigns analysis={analysis} />
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            
+            <div className="fixed top-[-1000px] left-[-1000px]"><ShareCard analysis={analysis} attempt={attempt} quiz={quiz} forwardedRef={shareCardRef} /></div>
+            
+            <VitalSigns analysis={analysis} attempt={attempt} />
             <SubjectPerformanceChart data={analysis.subjectPerformance} />
-            {attempt && <QuestionReview flatQuestions={flatQuestions} attempt={attempt} />}
+            <QuestionReview flatQuestions={flatQuestions} attempt={attempt} />
 
             <Card className="shadow-lg sticky bottom-4 z-20 bg-background/80 backdrop-blur-sm">
-                <CardContent className="p-4 flex flex-col md:flex-row items-center justify-center gap-4">
-                    <Button variant="outline" className="w-full md:w-auto" asChild>
-                       <Link href={`/quiz/${quizId}`}>
-                         <Repeat className="mr-2 h-4 w-4" /> Retake Exam
-                       </Link>
+                <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <Button variant="outline" className="w-full" asChild>
+                       <Link href={`/quiz/${quizId}`}> <Repeat className="mr-2 h-4 w-4" /> Retake </Link>
                     </Button>
-                     <Button className="w-full md:w-auto" asChild>
-                       <Link href="/dashboard">
-                        <LayoutDashboard className="mr-2 h-4 w-4" /> Back to Dashboard
-                       </Link>
+                     <Button className="w-full" asChild>
+                       <Link href="/dashboard"> <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard </Link>
+                    </Button>
+                     <Button variant="secondary" className="w-full" asChild>
+                       <Link href={`/results/${attempt.studentId}`}> <BarChart className="mr-2 h-4 w-4" /> My Profile </Link>
+                    </Button>
+                     <Button onClick={handleGenerateCard} variant="default" className="w-full bg-pink-500 hover:bg-pink-600 text-white">
+                        <Download className="mr-2 h-4 w-4" /> Share Card
                     </Button>
                 </CardContent>
             </Card>
