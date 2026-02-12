@@ -49,16 +49,8 @@ export function LoginForm() {
         title: "Login Successful",
         description: "Welcome back! Redirecting to your dashboard.",
       });
-
-      router.push("/dashboard");
-
-      // Fallback for environments where router.push might fail
-      setTimeout(() => {
-        if (window.location.pathname.includes('/login')) {
-          window.location.href = '/dashboard';
-        }
-      }, 1500);
-
+      // The redirect is now handled by the parent LoginPage's useEffect
+      // which listens for the user state to change.
     } catch (error: any) {
       console.error("Login error:", error);
       toast({
@@ -111,7 +103,7 @@ export function LoginForm() {
               {isLoading ? (
                 <>
                   <Loader2 className="animate-spin" />
-                  <span>Redirecting...</span>
+                  <span>Signing In...</span>
                 </>
               ) : (
                 "Sign In"
