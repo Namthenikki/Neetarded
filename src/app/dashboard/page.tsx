@@ -29,74 +29,69 @@ export default function DashboardPage() {
       return;
     }
 
-    let isMounted = true;
-    let unsubscribeAssignments: () => void = () => {};
+    setLoading(true);
 
-    async function fetchInitialData() {
-      if (!user || !isMounted) return;
-      setLoading(true);
+    // Fetch past attempts (one-time fetch)
+    const fetchAttempts = async () => {
       try {
-        // Fetch past attempts (one-time fetch)
         const attemptsQuery = query(
           collection(db, "attempts"),
           where("studentId", "==", user.studentId),
           orderBy("completedAt", "desc")
         );
         const attemptsSnapshot = await getDocs(attemptsQuery);
-        if (isMounted) {
-          const studentAttempts = attemptsSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              ...data,
-              completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
-            } as QuizAttempt;
-          });
-          setAttempts(studentAttempts);
-        }
-
-        // Set up real-time listener for new assignments
-        const assignmentsQuery = query(
-          collection(db, "assigned_quizzes"),
-          where("studentId", "==", user.studentId),
-          where("status", "==", "pending")
-        );
-        
-        unsubscribeAssignments = onSnapshot(assignmentsQuery, async (snapshot) => {
-          console.log("Current Student ID:", user.studentId);
-          console.log("Assigned Quizzes Found:", snapshot.docs.length);
-          
-          const promises = snapshot.docs.map(async (assignmentDoc) => {
-            const assignmentData = { id: assignmentDoc.id, ...assignmentDoc.data() } as AssignedQuiz;
-            const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
-            if (quizDoc.exists()) {
-              return { ...assignmentData, quiz: quizDoc.data() as Quiz };
-            }
-            return null;
-          });
-
-          const results = await Promise.all(promises);
-          if (isMounted) {
-            const validAssignments = results
-              .filter((a): a is AssignedQuiz & { quiz: Quiz } => a !== null)
-              .sort((a, b) => b.assignedAt.toDate().getTime() - a.assignedAt.toDate().getTime());
-            setAssignments(validAssignments);
-          }
+        const studentAttempts = attemptsSnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+          } as QuizAttempt;
         });
-
+        setAttempts(studentAttempts);
       } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        console.error("Error fetching past attempts:", error);
       }
-    }
+    };
 
-    fetchInitialData();
+    fetchAttempts().finally(() => {
+      // We set loading to false only after the assignments listener has its first run
+    });
 
+    // Set up real-time listener for new assignments
+    console.log("Current Student ID:", user.studentId);
+    const assignmentsQuery = query(
+      collection(db, "assigned_quizzes"),
+      where("studentId", "==", user.studentId),
+      where("status", "==", "pending")
+    );
+    
+    const unsubscribeAssignments = onSnapshot(assignmentsQuery, async (snapshot) => {
+      console.log("Assigned Quizzes Found:", snapshot.docs.length);
+      
+      const promises = snapshot.docs.map(async (assignmentDoc) => {
+        const assignmentData = { id: assignmentDoc.id, ...assignmentDoc.data() } as AssignedQuiz;
+        const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
+        if (quizDoc.exists()) {
+          return { ...assignmentData, quiz: quizDoc.data() as Quiz };
+        }
+        return null;
+      });
+
+      const results = await Promise.all(promises);
+      const validAssignments = results
+        .filter((a): a is AssignedQuiz & { quiz: Quiz } => a !== null)
+        .sort((a, b) => b.assignedAt.toDate().getTime() - a.assignedAt.toDate().getTime());
+      
+      setAssignments(validAssignments);
+      setLoading(false); // End loading after both fetches are initiated/done
+    }, (error) => {
+      console.error("Error with assignments listener:", error);
+      setLoading(false);
+    });
+
+    // Cleanup listener on component unmount
     return () => {
-      isMounted = false;
       unsubscribeAssignments();
     };
   }, [user, authLoading, router]);
@@ -207,3 +202,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
