@@ -29,7 +29,9 @@ export default function DashboardPage() {
       return;
     }
 
-    // Set up real-time listener for new assignments. This will update the UI whenever a new quiz is assigned.
+    setLoading(true);
+
+    // Set up real-time listener for new assignments.
     const assignmentsQuery = query(
       collection(db, "assigned_quizzes"),
       where("studentId", "==", user.studentId),
@@ -58,16 +60,19 @@ export default function DashboardPage() {
       console.error("Error with assignments listener:", error);
     });
 
-    // Fetch past attempts. This is a one-time fetch that controls the main loading state of the page.
+    // Fetch past attempts.
     const fetchAttempts = async () => {
-        setLoading(true);
+        console.log("Current Student ID:", user.studentId);
         try {
+            // First attempt with ordering
             const attemptsQuery = query(
               collection(db, "attempts"),
               where("studentId", "==", user.studentId),
               orderBy("completedAt", "desc")
             );
             const attemptsSnapshot = await getDocs(attemptsQuery);
+            console.log("Found attempts (with orderBy):", attemptsSnapshot.docs.length);
+
             const studentAttempts = attemptsSnapshot.docs.map((doc) => {
               const data = doc.data();
               return {
@@ -78,7 +83,28 @@ export default function DashboardPage() {
             });
             setAttempts(studentAttempts);
         } catch (error) {
-            console.error("Error fetching past attempts:", error);
+            console.warn("Could not fetch attempts with ordering (this may be due to a missing index). Retrying without. Error:", error);
+             try {
+                // Fallback without ordering
+                const attemptsQuery = query(
+                  collection(db, "attempts"),
+                  where("studentId", "==", user.studentId)
+                );
+                const attemptsSnapshot = await getDocs(attemptsQuery);
+                console.log("Found attempts (fallback):", attemptsSnapshot.docs.length);
+                const studentAttempts = attemptsSnapshot.docs.map((doc) => {
+                  const data = doc.data();
+                  return {
+                    id: doc.id,
+                    ...data,
+                    completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+                  } as QuizAttempt;
+                }).sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime()); // Manual sort
+                
+                setAttempts(studentAttempts);
+            } catch (fallbackError) {
+                 console.error("Error fetching attempts (fallback):", fallbackError);
+            }
         } finally {
             setLoading(false);
         }
