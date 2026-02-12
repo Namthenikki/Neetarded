@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { generateBinaryCode } from "@/lib/binaryUtils";
 import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
@@ -224,43 +224,56 @@ export default function CreateQuizPage() {
       setIsAnalyzing(false);
     }
   };
-
-  const handleSave = async (isPublished: boolean): Promise<string | null> => {
-    if (!title) {
-      toast({ variant: "destructive", title: "Title is required." });
-      return null;
+  
+  const handleSave = async (action: "start" | "publish") => {
+    console.log("Button Clicked:", action);
+    if (!title || !hasQuestions) {
+      toast({
+        variant: "destructive",
+        title: "Missing Information",
+        description: "Please provide a Quiz Title and add questions before saving.",
+      });
+      return;
     }
     if (!validateStructure()) {
-      return null;
-    }
-    if (!hasQuestions) {
-        toast({
-          variant: "destructive",
-          title: "No Questions",
-          description: "Please add at least one question using the AI parser before saving.",
-        });
-        return null;
+      return;
     }
     if (!user) {
       toast({
         variant: "destructive",
-        title: "You must be logged in to save a quiz.",
+        title: "Authentication Error",
+        description: "You must be logged in to save a quiz.",
       });
-      return null;
+      return;
     }
+
     setIsSaving(true);
     try {
-      const quizId = `${title.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
-      await setDoc(doc(db, "quizzes", quizId), {
-        id: quizId,
+      const isPublished = action === 'publish';
+      const quizPayload = {
         title,
         settings,
-        structure: structure,
+        structure,
         isPublished,
         createdAt: new Date(),
         ownerId: user.uid,
-      });
-      return quizId;
+      };
+      
+      const docRef = await addDoc(collection(db, "quizzes"), quizPayload);
+      // Now update the document with its own ID
+      await setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
+
+      if (action === 'start') {
+        toast({
+            title: "Draft Saved!",
+            description: "Starting your quiz now...",
+        });
+        router.push(`/quiz/${docRef.id}`);
+      } else { // publish
+        setPublishedQuizId(docRef.id);
+        setShowSuccessModal(true);
+      }
+
     } catch (error) {
       console.error("Error saving quiz:", error);
       toast({
@@ -268,28 +281,8 @@ export default function CreateQuizPage() {
         title: "Uh oh! Something went wrong.",
         description: "Could not save the quiz.",
       });
-      return null;
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleStartQuiz = async () => {
-    const quizId = await handleSave(false);
-    if (quizId) {
-        toast({
-            title: "Draft Saved!",
-            description: "Starting your quiz now...",
-        });
-        router.push(`/quiz/${quizId}`);
-    }
-  };
-
-  const handlePublish = async () => {
-    const quizId = await handleSave(true);
-    if (quizId) {
-        setPublishedQuizId(quizId);
-        setShowSuccessModal(true);
     }
   };
   
@@ -303,7 +296,7 @@ export default function CreateQuizPage() {
     });
   };
 
-  const isActionDisabled = isSaving || isAnalyzing || !title || !hasQuestions;
+  const isActionDisabled = isSaving || isAnalyzing;
 
   return (
     <div className="p-4 md:p-8 relative min-h-screen">
@@ -532,14 +525,14 @@ export default function CreateQuizPage() {
             <div className="mx-auto flex max-w-4xl items-center justify-end gap-4">
                 <Button
                     variant="secondary"
-                    onClick={handleStartQuiz}
+                    onClick={() => handleSave('start')}
                     disabled={isActionDisabled}
                 >
-                    <Play className="mr-2 h-4 w-4" />
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                     Start Quiz Now
                 </Button>
                 <Button
-                    onClick={handlePublish}
+                    onClick={() => handleSave('publish')}
                     disabled={isActionDisabled}
                 >
                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
@@ -577,5 +570,5 @@ export default function CreateQuizPage() {
 
     </div>
   );
-}
 
+    
