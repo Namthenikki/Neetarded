@@ -91,6 +91,7 @@ export default function QuizPage() {
   const handleSubmit = useCallback(async () => {
     if (status !== 'active' || !quiz || !user) return;
     setStatus('submitting');
+    console.log("Saving attempt for Student ID:", user.studentId);
     
     const score = flatQuestions.reduce((acc, q) => {
         const userAnswerId = answers[q.questionNumber];
@@ -134,6 +135,7 @@ export default function QuizPage() {
 
         // 1. Save the new attempt
         const attemptRef = doc(collection(db, "attempts"));
+        console.log("Attempt Document ID:", attemptRef.id);
         batch.set(attemptRef, attemptData);
 
         // 2. Check for and update any pending assignment
@@ -147,6 +149,7 @@ export default function QuizPage() {
         if (!assignmentSnapshot.empty) {
             const assignmentDocRef = assignmentSnapshot.docs[0].ref;
             batch.update(assignmentDocRef, { status: 'completed' });
+            console.log("Marked assignment as completed:", assignmentDocRef.id);
         }
         
         await batch.commit();
@@ -291,3 +294,5 @@ export default function QuizPage() {
     </div>
   );
 }
+
+    
