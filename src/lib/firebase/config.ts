@@ -11,6 +11,10 @@ const firebaseConfig = {
   appId: "1:640362812798:web:5b2dcd12d82f448195cf2f",
 };
 
+// For debugging: Log the config to the browser console, masking the API key.
+const maskedApiKey = `${firebaseConfig.apiKey.substring(0, 5)}...${firebaseConfig.apiKey.substring(firebaseConfig.apiKey.length - 5)}`;
+console.log("Firebase Config Loaded:", { ...firebaseConfig, apiKey: maskedApiKey });
+
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
