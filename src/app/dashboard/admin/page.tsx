@@ -14,6 +14,7 @@ import { Loader2, Trash2, Search, BarChart, BookOpen, User } from "lucide-react"
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
 
 const ScoreHistoryChart = ({ data }: { data: QuizAttempt[] }) => {
     const chartData = useMemo(() => {
@@ -59,6 +60,7 @@ export default function AdminPage() {
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
 
   const [searchId, setSearchId] = useState("");
   const [searchedStudent, setSearchedStudent] = useState<{name: string, attempts: QuizAttempt[]} | null>(null);
@@ -88,14 +90,20 @@ export default function AdminPage() {
   }, [user, authLoading, logout, toast]);
   
   const handleDeleteQuiz = async (quizId: string) => {
-    if (!confirm('Are you sure you want to delete this quiz permanently?')) return;
+    if (!window.confirm("Are you absolutely sure? This will permanently delete this quiz and its data.")) {
+        return;
+    }
+
+    setDeletingQuizId(quizId);
     try {
       await deleteDoc(doc(db, "quizzes", quizId));
-      setQuizzes(quizzes.filter(q => q.id !== quizId));
+      setQuizzes(prevQuizzes => prevQuizzes.filter(q => q.id !== quizId));
       toast({ title: 'Quiz Deleted' });
-    } catch (error) {
-      console.error("Error deleting quiz:", error);
-      toast({ variant: 'destructive', title: 'Failed to delete quiz.' });
+    } catch (error: any) {
+      console.error("Failed to delete quiz:", error);
+      alert("Failed to delete quiz: " + error.message);
+    } finally {
+      setDeletingQuizId(null);
     }
   }
 
@@ -110,6 +118,7 @@ export default function AdminPage() {
 
           if (userSnapshot.empty) {
               toast({ variant: 'destructive', title: 'Student not found.' });
+              setSearching(false);
               return;
           }
           const studentName = userSnapshot.docs[0].data().name;
@@ -174,22 +183,37 @@ export default function AdminPage() {
           <CardContent className="max-h-[400px] overflow-y-auto">
             {loadingQuizzes ? <Loader2 className="mx-auto my-8 h-8 w-8 animate-spin text-primary" /> :
               <div className="space-y-3">
-                {quizzes.map(quiz => (
-                  <div key={quiz.id} className="flex items-center justify-between rounded-xl border p-3 bg-slate-50">
-                    <div className="flex-1 overflow-hidden pr-2">
-                      <p className="font-semibold line-clamp-1 text-slate-800">{quiz.title}</p>
-                      <p className="text-xs text-slate-500 font-mono">{quiz.id}</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button asChild variant="outline" size="sm" className="rounded-lg">
-                            <Link href={`/dashboard/stats/${quiz.id}`}><BarChart className="h-4 w-4" /></Link>
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteQuiz(quiz.id)} className="rounded-lg">
-                            <Trash2 className="h-4 w-4"/>
-                        </Button>
-                    </div>
-                  </div>
-                ))}
+                <AnimatePresence>
+                  {quizzes.map(quiz => (
+                    <motion.div 
+                        key={quiz.id} 
+                        layout
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -50, transition: { duration: 0.3 } }}
+                        className="flex items-center justify-between rounded-xl border p-3 bg-slate-50"
+                    >
+                      <div className="flex-1 overflow-hidden pr-2">
+                        <p className="font-semibold line-clamp-1 text-slate-800">{quiz.title}</p>
+                        <p className="text-xs text-slate-500 font-mono">{quiz.id}</p>
+                      </div>
+                      <div className="flex gap-2">
+                          <Button asChild variant="outline" size="sm" className="rounded-lg">
+                              <Link href={`/dashboard/stats/${quiz.id}`}><BarChart className="h-4 w-4" /></Link>
+                          </Button>
+                          <Button 
+                              variant="destructive" 
+                              size="sm" 
+                              onClick={() => handleDeleteQuiz(quiz.id)} 
+                              disabled={deletingQuizId === quiz.id}
+                              className="rounded-lg"
+                          >
+                              {deletingQuizId === quiz.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
+                          </Button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             }
           </CardContent>
