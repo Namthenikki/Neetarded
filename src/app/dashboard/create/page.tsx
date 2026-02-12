@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState } from "react";
-import { Plus, Save, Trash2, BookPlus, Loader2, BrainCircuit } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Save, Trash2, BookPlus, Loader2, BrainCircuit, Play, Globe, Clipboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { generateBinaryCode } from "@/lib/binaryUtils";
-import type { QuizStructure, Section, Chapter, QuizSettings } from "@/types/quiz";
+import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -23,12 +23,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { generateQuizAction } from "@/app/actions/quiz";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 export default function CreateQuizPage() {
   const { user } = useAuth();
@@ -46,6 +48,14 @@ export default function CreateQuizPage() {
   const [answers, setAnswers] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [publishedQuizId, setPublishedQuizId] = useState("");
+
+  const hasQuestions = useMemo(() => {
+    return structure.some(section => 
+      section.chapters.some(chapter => chapter.questions && chapter.questions.length > 0)
+    );
+  }, [structure]);
 
   const getAllBinaryCodes = () => {
     return structure.flatMap((section) =>
@@ -215,52 +225,85 @@ export default function CreateQuizPage() {
     }
   };
 
-  const handleSaveDraft = async () => {
+  const handleSave = async (isPublished: boolean): Promise<string | null> => {
     if (!title) {
       toast({ variant: "destructive", title: "Title is required." });
-      return;
+      return null;
     }
     if (!validateStructure()) {
-      return;
+      return null;
+    }
+    if (!hasQuestions) {
+        toast({
+          variant: "destructive",
+          title: "No Questions",
+          description: "Please add at least one question using the AI parser before saving.",
+        });
+        return null;
     }
     if (!user) {
       toast({
         variant: "destructive",
         title: "You must be logged in to save a quiz.",
       });
-      return;
+      return null;
     }
     setIsSaving(true);
     try {
       const quizId = `${title.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
-
       await setDoc(doc(db, "quizzes", quizId), {
         id: quizId,
         title,
         settings,
         structure: structure,
-        isPublished: false,
+        isPublished,
         createdAt: new Date(),
         ownerId: user.uid,
       });
-
-      toast({
-        title: "Draft Saved!",
-        description: `Quiz "${title}" has been saved successfully.`,
-      });
-
-      router.push("/dashboard");
+      return quizId;
     } catch (error) {
-      console.error("Error saving draft:", error);
+      console.error("Error saving quiz:", error);
       toast({
         variant: "destructive",
         title: "Uh oh! Something went wrong.",
-        description: "Could not save quiz draft.",
+        description: "Could not save the quiz.",
       });
+      return null;
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleStartQuiz = async () => {
+    const quizId = await handleSave(false);
+    if (quizId) {
+        toast({
+            title: "Draft Saved!",
+            description: "Starting your quiz now...",
+        });
+        router.push(`/quiz/${quizId}`);
+    }
+  };
+
+  const handlePublish = async () => {
+    const quizId = await handleSave(true);
+    if (quizId) {
+        setPublishedQuizId(quizId);
+        setShowSuccessModal(true);
+    }
+  };
+  
+  const copyLinkToClipboard = () => {
+    if(!publishedQuizId) return;
+    const link = `${window.location.origin}/quiz/${publishedQuizId}`;
+    navigator.clipboard.writeText(link);
+    toast({
+        title: "Link Copied!",
+        description: "The shareable link has been copied to your clipboard.",
+    });
+  };
+
+  const isActionDisabled = isSaving || isAnalyzing || !title || !hasQuestions;
 
   return (
     <div className="p-4 md:p-8 relative min-h-screen">
@@ -271,7 +314,7 @@ export default function CreateQuizPage() {
         </p>
       </header>
 
-      <div className="space-y-8 max-w-4xl mx-auto pb-24">
+      <div className="space-y-8 max-w-4xl mx-auto pb-32">
         {/* Phase A: Quiz Settings */}
         <Card className="shadow-sm">
           <CardHeader>
@@ -484,20 +527,55 @@ export default function CreateQuizPage() {
         </Card>
       </div>
 
-      {/* Phase D: Save Draft */}
-      <Button
-        className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-50 md:bottom-8 md:right-8"
-        onClick={handleSaveDraft}
-        disabled={isSaving || isAnalyzing}
-      >
-        {isSaving ? (
-          <Loader2 className="h-7 w-7 animate-spin" />
-        ) : (
-          <Save className="h-7 w-7" />
-        )}
-        <span className="sr-only">Save Draft</span>
-      </Button>
+        {/* Action Bar */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/90 p-4 backdrop-blur-sm md:left-64">
+            <div className="mx-auto flex max-w-4xl items-center justify-end gap-4">
+                <Button
+                    variant="secondary"
+                    onClick={handleStartQuiz}
+                    disabled={isActionDisabled}
+                >
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Quiz Now
+                </Button>
+                <Button
+                    onClick={handlePublish}
+                    disabled={isActionDisabled}
+                >
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
+                    Publish & Share
+                </Button>
+            </div>
+        </div>
+
+        {/* Success Modal */}
+        <AlertDialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Quiz Published Successfully!</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Anyone with this link can now attempt your quiz.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="share-link" className="text-sm font-medium">Shareable Link</Label>
+                  <div className="flex gap-2">
+                    <Input id="share-link" readOnly value={`${window.location.origin}/quiz/${publishedQuizId}`} />
+                    <Button onClick={copyLinkToClipboard} variant="outline" size="icon">
+                        <Clipboard className="h-4 w-4" />
+                        <span className="sr-only">Copy Link</span>
+                    </Button>
+                  </div>
+                </div>
+                <AlertDialogFooter className="mt-4">
+                    <Button variant="outline" onClick={() => router.push('/dashboard')}>
+                        Go to Dashboard
+                    </Button>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
     </div>
   );
+}
 
-    
