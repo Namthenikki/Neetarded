@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { type Quiz, type Question } from "@/types/quiz";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export default function QuizPage() {
           const quizDoc = await getDoc(doc(db, "quizzes", quizId));
           if (quizDoc.exists()) {
             const quizData = quizDoc.data() as Quiz;
-            if (!quizData.isPublished && user.role !== 'admin') {
+            if (!quizData.isPublished && user.role !== 'admin' && user.studentId !== quizData.ownerId) {
               setStatus('private');
               return;
             }
@@ -90,23 +91,23 @@ export default function QuizPage() {
     if (status !== 'active' || !quiz || !user) return;
     setStatus('submitting');
     
-    let correctAnswers = 0;
-    let incorrectAnswers = 0;
-    flatQuestions.forEach(q => {
+    const score = flatQuestions.reduce((acc, q) => {
         const userAnswerId = answers[q.questionNumber];
         if (userAnswerId) {
-            if (userAnswerId === q.correctOptionId) correctAnswers++;
-            else incorrectAnswers++;
+            if (userAnswerId === q.correctOptionId) return acc + quiz.settings.positiveMarks;
+            else return acc + quiz.settings.negativeMarks;
         }
-    });
-    
-    const score = (correctAnswers * quiz.settings.positiveMarks) + (incorrectAnswers * quiz.settings.negativeMarks);
+        return acc;
+    }, 0);
+
+    const correctAnswers = flatQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
+    const incorrectAnswers = flatQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
     const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
     const attemptData = {
         quizId: quiz.id,
         quizTitle: quiz.title,
-        userId: user.studentId,
+        userId: user.studentId, // Legacy
         studentId: user.studentId, 
         studentName: user.name, 
         isGuest: false,
@@ -128,11 +129,32 @@ export default function QuizPage() {
     };
 
     try {
-        const attemptRef = await addDoc(collection(db, "attempts"), attemptData);
+        const batch = writeBatch(db);
+
+        // 1. Save the new attempt
+        const attemptRef = doc(collection(db, "attempts"));
+        batch.set(attemptRef, attemptData);
+
+        // 2. Check for and update any pending assignment
+        const assignmentQuery = query(
+            collection(db, "assigned_quizzes"),
+            where("quizId", "==", quiz.id),
+            where("studentId", "==", user.studentId),
+            where("status", "==", "pending")
+        );
+        const assignmentSnapshot = await getDocs(assignmentQuery);
+        if (!assignmentSnapshot.empty) {
+            const assignmentDocRef = assignmentSnapshot.docs[0].ref;
+            batch.update(assignmentDocRef, { status: 'completed' });
+        }
+        
+        await batch.commit();
+
         setStatus('completed');
         router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
+
     } catch(error) {
-        console.error("Error saving attempt:", error);
+        console.error("Error submitting attempt:", error);
         alert("Failed to submit your attempt. Please try again.");
         setStatus('active');
     }

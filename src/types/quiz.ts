@@ -1,4 +1,5 @@
 
+
 export interface QuizSettings {
   duration: number; // in minutes
   positiveMarks: number;
@@ -66,4 +67,14 @@ export interface QuizAttempt {
   completedAt: any; // Allow Firestore Timestamp
 
   sectionPerformance: SectionPerformance[];
+}
+
+export interface AssignedQuiz {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  assignedAt: any;
+  status: 'pending' | 'completed';
+  creatorId: string;
 }

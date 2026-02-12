@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, Trash2, BookPlus, Loader2, BrainCircuit, Rocket, CheckCircle, Share2, Copy } from "lucide-react";
+import { Plus, Trash2, BookPlus, Loader2, BrainCircuit, Rocket, CheckCircle, Share2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress";
 import { generateBinaryCode } from "@/lib/binaryUtils";
 import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
-import { doc, setDoc, addDoc, collection, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
@@ -55,6 +55,9 @@ export default function CreateQuizPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [quizId, setQuizId] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [showDeployModal, setShowDeployModal] = useState(false);
+  const [deployStudentIds, setDeployStudentIds] = useState("");
+  const [isDeploying, setIsDeploying] = useState(false);
 
 
   const hasQuestions = useMemo(() => {
@@ -237,9 +240,9 @@ export default function CreateQuizPage() {
         title,
         settings,
         structure,
-        isPublished: false,
+        isPublished: false, // Deployed quizzes are published implicitly
         createdAt: serverTimestamp(),
-        ownerId: user.uid,
+        ownerId: user.studentId, // Using studentId for ownership
       };
       
       console.log("Attempting to save to 'quizzes' collection...", quizPayload);
@@ -256,7 +259,6 @@ export default function CreateQuizPage() {
         timeoutPromise
       ]) as any; 
 
-      // We don't await this secondary write for UI feedback speed
       setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
 
       await new Promise(res => setTimeout(res, 300));
@@ -275,32 +277,52 @@ export default function CreateQuizPage() {
     }
   };
 
-
   const handleStartProtocol = () => {
     if (!quizId) return;
     window.location.assign(`/quiz/${quizId}`);
   };
 
-  const handlePublishAndShare = async () => {
-    if (!quizId) return;
+  const handleDeploy = async () => {
+    if (!quizId || !user || !deployStudentIds.trim()) {
+        toast({ variant: 'destructive', title: 'Missing Info', description: 'Quiz ID or student IDs are missing.' });
+        return;
+    }
+    setIsDeploying(true);
     try {
-      await updateDoc(doc(db, "quizzes", quizId), { isPublished: true });
-      const link = `${window.location.origin}/quiz/${quizId}`;
-      navigator.clipboard.writeText(link);
-      toast({
-        title: "Published & Link Copied!",
-        description: "The quiz is now public and the link is on your clipboard.",
-      });
-      setIsReady(false); // Close modal
-      router.push('/dashboard/quizzes'); // Go to quizzes list
+        const studentIds = deployStudentIds.split(',').map(id => id.trim().toLowerCase()).filter(id => id);
+        const batch = writeBatch(db);
+
+        // 1. Set the quiz to published
+        const quizRef = doc(db, "quizzes", quizId);
+        batch.update(quizRef, { isPublished: true });
+
+        // 2. Create assignments for each student
+        for (const studentId of studentIds) {
+            const assignmentRef = doc(collection(db, "assigned_quizzes"));
+            batch.set(assignmentRef, {
+                quizId: quizId,
+                quizTitle: title,
+                studentId: studentId,
+                assignedAt: serverTimestamp(),
+                status: 'pending',
+                creatorId: user.studentId
+            });
+        }
+
+        await batch.commit();
+        toast({ title: 'Deployment Successful', description: `${studentIds.length} students have been assigned this quiz.` });
+        setShowDeployModal(false);
+        setIsReady(false);
+        router.push('/dashboard/admin');
+
     } catch (error: any) {
-        toast({
-            variant: "destructive",
-            title: "Failed to publish",
-            description: error.message || "Could not update the quiz settings."
-        })
+        console.error("Deploy error:", error);
+        toast({ variant: 'destructive', title: 'Deployment Failed', description: error.message });
+    } finally {
+        setIsDeploying(false);
     }
   };
+
 
   const isActionDisabled = isAnalyzing || isPorting;
 
@@ -568,7 +590,7 @@ export default function CreateQuizPage() {
             </div>
             <AlertDialogTitle>Quiz Engine Ready</AlertDialogTitle>
             <AlertDialogDescription>
-              Your quiz has been successfully ported and is ready for action.
+              Your quiz has been successfully ported. What's next?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid grid-cols-2 gap-4 py-4">
@@ -576,9 +598,9 @@ export default function CreateQuizPage() {
               <Rocket className="mr-2"/>
               Start Protocol
             </Button>
-            <Button onClick={handlePublishAndShare} variant="secondary" className="h-auto py-3">
-              <Share2 className="mr-2"/>
-              Publish & Share
+            <Button onClick={() => setShowDeployModal(true)} variant="secondary" className="h-auto py-3">
+              <Send className="mr-2"/>
+              Deploy to Students
             </Button>
           </div>
           <AlertDialogFooter>
@@ -589,10 +611,32 @@ export default function CreateQuizPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Deploy Modal */}
+      <AlertDialog open={showDeployModal} onOpenChange={setShowDeployModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deploy Quiz</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter comma-separated student IDs to assign this quiz. This will also publish the quiz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <Textarea 
+              placeholder="e.g. sourav, rahul, priya"
+              value={deployStudentIds}
+              onChange={(e) => setDeployStudentIds(e.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setShowDeployModal(false)} disabled={isDeploying}>Cancel</Button>
+            <Button onClick={handleDeploy} disabled={isDeploying}>
+              {isDeploying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send />}
+              Deploy
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
-
-    
-
-    

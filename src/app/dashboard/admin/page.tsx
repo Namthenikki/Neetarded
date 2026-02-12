@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -10,7 +11,7 @@ import { type Quiz, type QuizAttempt } from "@/types/quiz";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Trash2, Search, BarChart, BookOpen, User } from "lucide-react";
+import { Loader2, Trash2, Search, BarChart, BookOpen, User, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
@@ -63,7 +64,7 @@ export default function AdminPage() {
   const [deletingQuizId, setDeletingQuizId] = useState<string | null>(null);
 
   const [searchId, setSearchId] = useState("");
-  const [searchedStudent, setSearchedStudent] = useState<{name: string, attempts: QuizAttempt[]} | null>(null);
+  const [searchedStudent, setSearchedStudent] = useState<{name: string, attempts: QuizAttempt[], completionRate: number} | null>(null);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
@@ -76,7 +77,8 @@ export default function AdminPage() {
     async function fetchQuizzes() {
       setLoadingQuizzes(true);
       try {
-        const querySnapshot = await getDocs(collection(db, "quizzes"));
+        // Query quizzes created by the admin
+        const querySnapshot = await getDocs(query(collection(db, "quizzes"), where("ownerId", "==", user.studentId)));
         const allQuizzes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
         setQuizzes(allQuizzes);
       } catch (error) {
@@ -113,6 +115,7 @@ export default function AdminPage() {
       setSearching(true);
       setSearchedStudent(null);
       try {
+          // 1. Find user
           const userQuery = query(collection(db, "users"), where("studentId", "==", searchId));
           const userSnapshot = await getDocs(userQuery);
 
@@ -123,11 +126,20 @@ export default function AdminPage() {
           }
           const studentName = userSnapshot.docs[0].data().name;
 
+          // 2. Fetch all attempts for the student
           const attemptsQuery = query(collection(db, "attempts"), where("studentId", "==", searchId), orderBy("completedAt", "asc"));
           const attemptsSnapshot = await getDocs(attemptsQuery);
           const studentAttempts = attemptsSnapshot.docs.map(d => ({...d.data(), completedAt: d.data().completedAt.toDate()}) as QuizAttempt);
+          
+          // 3. Fetch all assignments for the student
+          const assignmentsQuery = query(collection(db, "assigned_quizzes"), where("studentId", "==", searchId));
+          const assignmentsSnapshot = await getDocs(assignmentsQuery);
+          
+          const totalAssignments = assignmentsSnapshot.size;
+          const completedAssignments = assignmentsSnapshot.docs.filter(d => d.data().status === 'completed').length;
+          const completionRate = totalAssignments > 0 ? (completedAssignments / totalAssignments) * 100 : 0;
 
-          setSearchedStudent({ name: studentName, attempts: studentAttempts });
+          setSearchedStudent({ name: studentName, attempts: studentAttempts, completionRate });
       } catch (error) {
         console.error("Error searching student:", error);
         toast({ variant: 'destructive', title: 'Failed to search student.' });
@@ -168,7 +180,13 @@ export default function AdminPage() {
             </form>
             {searchedStudent && (
               <div className="mt-6">
-                <h3 className="font-bold text-lg text-slate-800">{searchedStudent.name}'s Growth Chart</h3>
+                 <div className="flex justify-between items-start">
+                    <h3 className="font-bold text-lg text-slate-800">{searchedStudent.name}'s Growth Chart</h3>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground flex items-center gap-1"><CheckCircle className="text-primary"/> Completion</p>
+                      <p className="text-2xl font-bold text-slate-800">{searchedStudent.completionRate.toFixed(0)}%</p>
+                    </div>
+                </div>
                 <ScoreHistoryChart data={searchedStudent.attempts} />
               </div>
             )}

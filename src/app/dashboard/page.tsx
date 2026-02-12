@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -5,18 +6,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import { type QuizAttempt } from "@/types/quiz";
+import { collection, query, where, getDocs, orderBy, getDoc, doc } from "firebase/firestore";
+import { type QuizAttempt, type AssignedQuiz, type Quiz } from "@/types/quiz";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlusCircle, BarChart, FileText } from "lucide-react";
+import { Loader2, PlusCircle, BarChart, FileText, Bell, Rocket } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
+  const [assignments, setAssignments] = useState<(AssignedQuiz & { quiz: Quiz })[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,17 +29,17 @@ export default function DashboardPage() {
       return;
     }
 
-    async function fetchAttempts() {
+    async function fetchData() {
       setLoading(true);
       try {
-        const q = query(
+        // Fetch Attempts
+        const attemptsQuery = query(
           collection(db, "attempts"),
           where("studentId", "==", user.studentId),
           orderBy("completedAt", "desc")
         );
-        const querySnapshot = await getDocs(q);
-        
-        const studentAttempts = querySnapshot.docs.map((doc) => {
+        const attemptsSnapshot = await getDocs(attemptsQuery);
+        const studentAttempts = attemptsSnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -45,13 +48,35 @@ export default function DashboardPage() {
           } as QuizAttempt;
         });
         setAttempts(studentAttempts);
+
+        // Fetch Assignments
+        const assignmentsQuery = query(
+          collection(db, "assigned_quizzes"),
+          where("studentId", "==", user.studentId),
+          where("status", "==", "pending"),
+          orderBy("assignedAt", "desc")
+        );
+        const assignmentsSnapshot = await getDocs(assignmentsQuery);
+        const pendingAssignments: (AssignedQuiz & { quiz: Quiz })[] = [];
+        for (const assignmentDoc of assignmentsSnapshot.docs) {
+          const assignmentData = {id: assignmentDoc.id, ...assignmentDoc.data()} as AssignedQuiz;
+          const quizDoc = await getDoc(doc(db, "quizzes", assignmentData.quizId));
+          if (quizDoc.exists()) {
+            pendingAssignments.push({
+              ...assignmentData,
+              quiz: quizDoc.data() as Quiz
+            });
+          }
+        }
+        setAssignments(pendingAssignments);
+
       } catch (error) {
-        console.error("Error fetching attempts:", error);
+        console.error("Error fetching dashboard data:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchAttempts();
+    fetchData();
   }, [user, authLoading, router]);
 
   if (loading || authLoading) {
@@ -63,28 +88,33 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 md:p-8">
-      <header className="mb-8">
+    <div className="p-4 md:p-8 space-y-8">
+      <header className="mb-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Welcome back, {user?.name}!</h1>
         <p className="text-slate-600">This is your performance ledger.</p>
       </header>
 
-      <div className="mb-8">
+      {assignments.length > 0 && (
         <Card className="rounded-2xl border-primary/20 bg-card/80 backdrop-blur-sm">
             <CardHeader>
-                <CardTitle>Ready for a new Challenge?</CardTitle>
-                <CardDescription>Browse available quizzes and test your knowledge.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Bell className="text-primary"/> New Assignments</CardTitle>
+                <CardDescription>Your instructor has assigned these quizzes to you.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <Button asChild size="lg" className="rounded-xl">
-                    <Link href="/dashboard/quizzes">
-                        <PlusCircle className="mr-2 h-5 w-5" />
-                        Browse Quizzes
-                    </Link>
-                </Button>
+            <CardContent className="space-y-3">
+                {assignments.map(assignment => (
+                  <div key={assignment.id} className="flex items-center justify-between rounded-xl border p-3 bg-slate-50">
+                     <div>
+                        <p className="font-semibold text-slate-800">{assignment.quizTitle}</p>
+                        <p className="text-xs text-slate-500">Assigned on {format(assignment.assignedAt.toDate(), "PP")}</p>
+                      </div>
+                      <Button asChild size="sm">
+                          <Link href={`/quiz/${assignment.quizId}`}><Rocket/> Start Now</Link>
+                      </Button>
+                  </div>
+                ))}
             </CardContent>
         </Card>
-      </div>
+      )}
 
       <Card className="rounded-2xl">
         <CardHeader>
@@ -134,6 +164,21 @@ export default function DashboardPage() {
           </Table>
         </CardContent>
       </Card>
+
+       <Card className="rounded-2xl border-dashed">
+            <CardHeader>
+                <CardTitle>Looking for a new Challenge?</CardTitle>
+                <CardDescription>Browse all public quizzes and test your knowledge.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button asChild>
+                    <Link href="/dashboard/quizzes">
+                        <PlusCircle className="mr-2 h-5 w-5" />
+                        Browse All Quizzes
+                    </Link>
+                </Button>
+            </CardContent>
+        </Card>
     </div>
   );
 }
