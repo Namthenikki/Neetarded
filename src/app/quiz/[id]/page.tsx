@@ -233,6 +233,13 @@ export default function QuizPage() {
     }
   };
   
+  const handleSectionSelect = useCallback((sectionId: string) => {
+    const firstQuestionIndex = flatQuestions.findIndex(q => q.sectionId === sectionId);
+    if (firstQuestionIndex !== -1) {
+      setCurrentQuestionIndex(firstQuestionIndex);
+    }
+  }, [flatQuestions]);
+
   const progress = useMemo(() => {
     if (flatQuestions.length === 0) return 0;
     return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
@@ -253,15 +260,33 @@ export default function QuizPage() {
     <div className="flex flex-col h-screen overflow-hidden">
       {(status === 'active' || status === 'submitting') && quiz && currentQuestion && (
         <>
-          <header className="sticky top-0 z-10 flex flex-col pt-2 bg-background">
-            <div className="flex items-center justify-between p-3">
-              <Badge variant="outline" className="text-sm font-semibold rounded-lg">{currentQuestion.sectionName}</Badge>
-              <div className={cn("flex items-center gap-2 font-semibold text-lg", timeIsLow ? "text-destructive" : "text-primary")}>
-                <Timer className="h-6 w-6"/>
-                <span> {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')} </span>
-              </div>
+          <header className="sticky top-0 z-10 flex flex-col pt-2 bg-background/95 backdrop-blur-sm">
+            <div className="flex items-center justify-between p-3 flex-wrap gap-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {quiz.structure.map((section) => {
+                        const isCurrentSection = section.id === currentQuestion.sectionId;
+                        return (
+                            <Button
+                                key={section.id}
+                                variant={isCurrentSection ? 'default' : 'secondary'}
+                                size="sm"
+                                onClick={() => handleSectionSelect(section.id)}
+                                className="rounded-lg transition-all shadow-sm"
+                                disabled={status === 'submitting'}
+                            >
+                                {section.name}
+                            </Button>
+                        );
+                    })}
+                </div>
+                <div className={cn("flex items-center gap-2 font-semibold text-lg shrink-0", timeIsLow ? "text-destructive" : "text-primary")}>
+                    <Timer className="h-6 w-6"/>
+                    <span>
+                        {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                    </span>
+                </div>
             </div>
-            <Progress value={progress} className="h-1 bg-accent/20 [&>div]:bg-accent" />
+            <Progress value={progress} className="h-1" />
           </header>
 
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
@@ -337,5 +362,3 @@ export default function QuizPage() {
     </div>
   );
 }
-
-    
