@@ -23,6 +23,7 @@ type AnswerMap = { [questionNumber: number]: string };
 interface FlatQuestion extends Question {
   sectionId: string;
   sectionName: string;
+  chapterBinaryCode: string;
   chapterName: string;
 }
 
@@ -47,6 +48,7 @@ export default function QuizPage() {
           ...q,
           sectionId: section.id,
           sectionName: section.name,
+          chapterBinaryCode: chapter.binaryCode,
           chapterName: chapter.name,
         }))
       )
@@ -106,6 +108,46 @@ export default function QuizPage() {
     const incorrectAnswers = flatQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
     const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
+    // Deep Analysis Calculation
+    const deepAnalysis: any = {
+      subjects: {},
+      chapters: {}
+    };
+
+    flatQuestions.forEach(q => {
+      const sectionId = q.sectionId;
+      const sectionName = q.sectionName;
+      const chapterCode = q.chapterBinaryCode;
+      const chapterName = q.chapterName;
+
+      // Initialize subject if not present
+      if (!deepAnalysis.subjects[sectionId]) {
+        deepAnalysis.subjects[sectionId] = { name: sectionName, score: 0, correct: 0, incorrect: 0, skipped: 0 };
+      }
+      // Initialize chapter if not present
+      if (!deepAnalysis.chapters[chapterCode]) {
+        deepAnalysis.chapters[chapterCode] = { subject: sectionName, name: chapterName, correct: 0, incorrect: 0, skipped: 0 };
+      }
+
+      const userAnswerId = answers[q.questionNumber];
+
+      if (!userAnswerId) {
+        // Skipped
+        deepAnalysis.subjects[sectionId].skipped++;
+        deepAnalysis.chapters[chapterCode].skipped++;
+      } else if (userAnswerId === q.correctOptionId) {
+        // Correct
+        deepAnalysis.subjects[sectionId].correct++;
+        deepAnalysis.subjects[sectionId].score += quiz.settings.positiveMarks;
+        deepAnalysis.chapters[chapterCode].correct++;
+      } else {
+        // Incorrect
+        deepAnalysis.subjects[sectionId].incorrect++;
+        deepAnalysis.subjects[sectionId].score += quiz.settings.negativeMarks;
+        deepAnalysis.chapters[chapterCode].incorrect++;
+      }
+    });
+
     const attemptData = {
         quizId: quiz.id,
         quizTitle: quiz.title,
@@ -128,6 +170,7 @@ export default function QuizPage() {
                 accuracy: attempted > 0 ? (sectionCorrect / attempted) * 100 : 0
             }
         }),
+        deepAnalysis: deepAnalysis,
     };
 
     try {
