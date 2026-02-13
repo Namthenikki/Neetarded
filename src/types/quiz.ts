@@ -79,3 +79,14 @@ export interface AssignedQuiz {
   status: 'pending' | 'completed';
   creatorId: string;
 }
+
+export interface LibraryQuestion {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  questionData: Question;
+  sectionName: string;
+  chapterName: string;
+  studentId: string;
+  addedAt: any;
+}

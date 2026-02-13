@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -7,6 +8,7 @@ import {
   BookPlus,
   LogOut,
   Shield,
+  Library,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -26,7 +28,8 @@ import { Button } from "../ui/button";
 
 const studentNavLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/dashboard/quizzes", icon: BookCopy, label: "Browse Quizzes" },
+  { href: "/dashboard/my-library", icon: Library, label: "My Library" },
+  { href: "/dashboard/quizzes", icon: BookCopy, label: "My Quizzes" },
   { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
 ];
 
@@ -39,7 +42,14 @@ export function SidebarNav() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   
-  const navLinks = user?.role === 'admin' ? [...adminNavLinks, ...studentNavLinks] : studentNavLinks;
+  // Create a unique set of links for the admin to avoid duplicates
+  const adminFinalLinks = [
+      ...adminNavLinks,
+      { href: "/dashboard/quizzes", icon: BookCopy, label: "All Quizzes" },
+      { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
+  ];
+
+  const navLinks = user?.role === 'admin' ? adminFinalLinks : studentNavLinks;
 
   const getInitials = (name: string = '') => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -53,7 +63,7 @@ export function SidebarNav() {
       <nav className="flex-1">
         <ul className="space-y-1">
           {navLinks.map((link) => {
-             const isActive = (pathname.startsWith(link.href) && link.href !== '/dashboard') || pathname === link.href;
+             const isActive = (pathname.startsWith(link.href) && link.href !== '/dashboard' && link.href !== '/dashboard/admin') || pathname === link.href;
             return (
             <li key={link.href}>
               <Link

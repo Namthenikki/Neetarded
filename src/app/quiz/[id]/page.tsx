@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch } from "firebase/firestore";
+import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch, setDoc, deleteDoc } from "firebase/firestore";
 import { type Quiz, type Question } from "@/types/quiz";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2 } from "lucide-react";
+import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2, Star, Flag } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
@@ -32,12 +33,17 @@ export default function QuizPage() {
   const params = useParams();
   const { user, loading: authLoading } = useAuth();
   const quizId = params.id as string;
+  const { toast } = useToast();
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [status, setStatus] = useState<QuizStatus>('loading');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [timeLeft, setTimeLeft] = useState(0);
+
+  const [starredQuestions, setStarredQuestions] = useState<Set<number>>(new Set());
+  const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
 
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
@@ -89,6 +95,26 @@ export default function QuizPage() {
       }
       fetchQuiz();
   }, [quizId, user, authLoading, router]);
+
+  useEffect(() => {
+    if (!user || !quizId || status !== 'active') return;
+
+    const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
+        const q = query(
+            collection(db, collectionName),
+            where("studentId", "==", user.studentId),
+            where("quizId", "==", quizId)
+        );
+        const snapshot = await getDocs(q);
+        const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
+        setter(questionNumbers);
+    };
+
+    fetchStatus('starred_questions', setStarredQuestions);
+    fetchStatus('flagged_questions', setFlaggedQuestions);
+
+  }, [user, quizId, status]);
+
 
   const handleSubmit = useCallback(async () => {
     if (status !== 'active' || !quiz || !user) return;
@@ -240,6 +266,62 @@ export default function QuizPage() {
     }
   }, [flatQuestions]);
 
+  const handleToggleFeature = async (
+    question: FlatQuestion,
+    collectionName: 'starred_questions' | 'flagged_questions',
+    stateSet: Set<number>,
+    setter: React.Dispatch<React.SetStateAction<Set<number>>>
+  ) => {
+      if (!user || isSyncing || !quiz) return;
+      setIsSyncing(true);
+
+      const questionNumber = question.questionNumber;
+      const docId = `${user.studentId}_${quizId}_${questionNumber}`;
+      const docRef = doc(db, collectionName, docId);
+      
+      const newSet = new Set(stateSet);
+      let action: 'add' | 'remove' = 'add';
+
+      try {
+          if (newSet.has(questionNumber)) {
+              action = 'remove';
+              await deleteDoc(docRef);
+              newSet.delete(questionNumber);
+          } else {
+              action = 'add';
+              const payload = {
+                  studentId: user.studentId,
+                  quizId,
+                  quizTitle: quiz.title,
+                  questionNumber: question.questionNumber,
+                  sectionId: question.sectionId,
+                  sectionName: question.sectionName,
+                  chapterBinaryCode: question.chapterBinaryCode,
+                  chapterName: question.chapterName,
+                  questionData: {
+                      text: question.text,
+                      options: question.options,
+                      correctOptionId: question.correctOptionId,
+                      explanation: question.explanation || '',
+                      questionNumber: question.questionNumber,
+                  },
+                  addedAt: serverTimestamp(),
+              };
+              await setDoc(docRef, payload);
+              newSet.add(questionNumber);
+          }
+          setter(newSet);
+          toast({
+            title: `Question ${action === 'add' ? 'Added to' : 'Removed from'} ${collectionName === 'starred_questions' ? 'Starred' : 'Flagged'}`,
+          });
+      } catch (error) {
+          console.error(`Failed to toggle ${collectionName}:`, error);
+          toast({ variant: 'destructive', title: `Operation failed.` });
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
   const progress = useMemo(() => {
     if (flatQuestions.length === 0) return 0;
     return ((currentQuestionIndex + 1) / flatQuestions.length) * 100;
@@ -301,7 +383,17 @@ export default function QuizPage() {
               >
                 <Card className="bg-transparent border-0 shadow-none rounded-2xl">
                   <CardContent className="p-0">
-                    <p className="text-sm font-semibold text-primary mb-4"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
+                    <div className="flex justify-between items-center mb-4">
+                        <p className="text-sm font-semibold text-primary"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
+                        <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
+                                <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing}>
+                                <Star className={cn("h-5 w-5", starredQuestions.has(currentQuestion.questionNumber) && "fill-yellow-400 text-yellow-400")}/>
+                            </Button>
+                        </div>
+                    </div>
                     <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed">{currentQuestion.text}</p>
                   </CardContent>
                 </Card>

@@ -7,10 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit, Download, Dna } from 'lucide-react';
-import { useAuth } from '@/hooks/use-auth';
+import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit, Download, Dna, Star, Flag } from 'lucide-react';
+import { useAuth, type AppUser } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { type QuizAttempt, type Quiz, type Question } from '@/types/quiz';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
@@ -18,6 +18,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Bar, BarChart as RechartsBarC
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import html2canvas from 'html2canvas';
+import { useToast } from '@/hooks/use-toast';
 
 interface FlatQuestion extends Question {
   sectionId: string;
@@ -109,8 +110,31 @@ const SubjectPerformanceChart = ({ data }: { data: any[] }) => {
   );
 }
 
-const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestion[], attempt: QuizAttempt }) => {
+const QuestionReview = ({ 
+    flatQuestions, 
+    attempt, 
+    user,
+    quizId,
+    quizTitle,
+    starredQuestions,
+    setStarredQuestions,
+    flaggedQuestions,
+    setFlaggedQuestions,
+}: { 
+    flatQuestions: FlatQuestion[], 
+    attempt: QuizAttempt,
+    user: AppUser | null,
+    quizId: string,
+    quizTitle: string,
+    starredQuestions: Set<number>,
+    setStarredQuestions: React.Dispatch<React.SetStateAction<Set<number>>>,
+    flaggedQuestions: Set<number>,
+    setFlaggedQuestions: React.Dispatch<React.SetStateAction<Set<number>>>,
+}) => {
     const [filter, setFilter] = useState('all');
+    const [isSyncing, setIsSyncing] = useState<number | null>(null);
+    const { toast } = useToast();
+
     const filteredQuestions = useMemo(() => {
         return filter === 'all' ? flatQuestions 
              : flatQuestions.filter(q => {
@@ -120,6 +144,62 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                 return false;
             });
     }, [filter, flatQuestions, attempt.answers]);
+
+    const handleToggleFeature = async (
+        question: FlatQuestion,
+        collectionName: 'starred_questions' | 'flagged_questions',
+        stateSet: Set<number>,
+        setter: React.Dispatch<React.SetStateAction<Set<number>>>
+      ) => {
+          if (!user || isSyncing === question.questionNumber) return;
+          setIsSyncing(question.questionNumber);
+    
+          const questionNumber = question.questionNumber;
+          const docId = `${user.studentId}_${quizId}_${questionNumber}`;
+          const docRef = doc(db, collectionName, docId);
+          
+          const newSet = new Set(stateSet);
+          let action: 'add' | 'remove' = 'add';
+    
+          try {
+              if (newSet.has(questionNumber)) {
+                  action = 'remove';
+                  await deleteDoc(docRef);
+                  newSet.delete(questionNumber);
+              } else {
+                  action = 'add';
+                  const payload = {
+                      studentId: user.studentId,
+                      quizId,
+                      quizTitle: quizTitle,
+                      questionNumber: question.questionNumber,
+                      sectionId: question.sectionId,
+                      sectionName: question.sectionName,
+                      chapterBinaryCode: question.chapterBinaryCode,
+                      chapterName: question.chapterName,
+                      questionData: {
+                          text: question.text,
+                          options: question.options,
+                          correctOptionId: question.correctOptionId,
+                          explanation: question.explanation || '',
+                          questionNumber: question.questionNumber,
+                      },
+                      addedAt: serverTimestamp(),
+                  };
+                  await setDoc(docRef, payload);
+                  newSet.add(questionNumber);
+              }
+              setter(newSet);
+              toast({
+                title: `Question ${action === 'add' ? 'Added to' : 'Removed from'} ${collectionName === 'starred_questions' ? 'Starred' : 'Flagged'}`,
+              });
+          } catch (error) {
+              console.error(`Failed to toggle ${collectionName}:`, error);
+              toast({ variant: 'destructive', title: `Operation failed.` });
+          } finally {
+              setIsSyncing(null);
+          }
+      };
 
     return (
         <Card className="shadow-lg bg-card/80 backdrop-blur-sm border-white/10">
@@ -150,10 +230,18 @@ const QuestionReview = ({ flatQuestions, attempt }: { flatQuestions: FlatQuestio
                                         <Badge variant="outline">{q.sectionName}</Badge>
                                         <p className="mt-1 text-xs text-muted-foreground font-mono">{q.chapterName}</p>
                                     </div>
-                                    <div className={cn("h-6 w-6 rounded-full flex items-center justify-center", isCorrect && "bg-green-500/20 text-green-400", isWrong && "bg-red-500/20 text-red-400", isSkipped && "bg-muted")}>
-                                        {isCorrect && <Check size={16}/>}
-                                        {isWrong && <X size={16}/>}
-                                        {isSkipped && <ChevronsRight size={16}/>}
+                                    <div className="flex items-center">
+                                        <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(q, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing === q.questionNumber}>
+                                            <Flag className={cn("h-5 w-5 text-muted-foreground", flaggedQuestions.has(q.questionNumber) && "fill-orange-500 text-orange-500")}/>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(q, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing === q.questionNumber}>
+                                            <Star className={cn("h-5 w-5 text-muted-foreground", starredQuestions.has(q.questionNumber) && "fill-yellow-400 text-yellow-400")}/>
+                                        </Button>
+                                        <div className={cn("h-6 w-6 rounded-full flex items-center justify-center ml-2", isCorrect && "bg-green-500/20 text-green-400", isWrong && "bg-red-500/20 text-red-400", isSkipped && "bg-muted")}>
+                                            {isCorrect && <Check size={16}/>}
+                                            {isWrong && <X size={16}/>}
+                                            {isSkipped && <ChevronsRight size={16}/>}
+                                        </div>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -314,6 +402,9 @@ export default function ResultPage() {
     const [error, setError] = useState<string | null>(null);
     const shareCardRef = useRef(null);
 
+    const [starredQuestions, setStarredQuestions] = useState<Set<number>>(new Set());
+    const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
+
     useEffect(() => {
         async function fetchResults() {
             if (!attemptId) { setError("Attempt ID not found."); setLoading(false); return; }
@@ -328,8 +419,7 @@ export default function ResultPage() {
 
                 setAttempt(attemptData);
                 setQuiz(quizDoc.data() as Quiz);
-                setTimeout(() => setLoading(false), 1500);
-
+                // No need to set loading false here, will be done after fetching star/flag status
             } catch (e: any) {
                 setError(e.message || "An unknown error occurred.");
                 setLoading(false);
@@ -337,6 +427,32 @@ export default function ResultPage() {
         }
         fetchResults();
     }, [attemptId]);
+
+    useEffect(() => {
+        if (!user || !quizId || !attempt) return;
+    
+        const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
+            const q = query(
+                collection(db, collectionName),
+                where("studentId", "==", user.studentId),
+                where("quizId", "==", quizId)
+            );
+            const snapshot = await getDocs(q);
+            const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
+            setter(questionNumbers);
+        };
+        
+        const fetchAllStatus = async () => {
+            await Promise.all([
+                fetchStatus('starred_questions', setStarredQuestions),
+                fetchStatus('flagged_questions', setFlaggedQuestions)
+            ]);
+            setLoading(false); // Set loading to false after everything is fetched
+        }
+    
+        fetchAllStatus();
+    
+      }, [user, quizId, attempt]);
 
     const flatQuestions: FlatQuestion[] = useMemo(() => {
         if (!quiz) return [];
@@ -395,7 +511,17 @@ export default function ResultPage() {
             <VitalSigns analysis={analysis} attempt={attempt} />
             <SubjectPerformanceChart data={analysis.subjectPerformance} />
             {attempt && <DeepAnalysis attempt={attempt} />}
-            <QuestionReview flatQuestions={flatQuestions} attempt={attempt} />
+            <QuestionReview 
+                flatQuestions={flatQuestions} 
+                attempt={attempt} 
+                user={user}
+                quizId={quiz.id}
+                quizTitle={quiz.title}
+                starredQuestions={starredQuestions}
+                setStarredQuestions={setStarredQuestions}
+                flaggedQuestions={flaggedQuestions}
+                setFlaggedQuestions={setFlaggedQuestions}
+            />
 
             <Card className="shadow-lg sticky bottom-4 z-20 bg-card/80 backdrop-blur-sm border-white/10">
                 <CardContent className="p-2 grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -410,5 +536,3 @@ export default function ResultPage() {
         </motion.div>
     );
 }
-
-    

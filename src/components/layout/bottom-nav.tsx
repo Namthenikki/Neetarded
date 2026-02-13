@@ -1,14 +1,16 @@
+
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookCopy, User, PlusCircle, Shield } from "lucide-react";
+import { LayoutDashboard, BookCopy, User, PlusCircle, Shield, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
 const studentNavLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
   { href: "/dashboard/quizzes", icon: BookCopy, label: "Quizzes" },
+  { href: "/dashboard/my-library", icon: Library, label: "Library" },
   { href: "/dashboard/profile", icon: User, label: "Profile" },
 ];
 
