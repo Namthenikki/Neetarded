@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit, Download } from 'lucide-react';
+import { Award, Loader2, Check, X, ChevronsRight, AlertTriangle, BarChart, Clock, Target, Repeat, LayoutDashboard, BrainCircuit, Download, Dna } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
@@ -220,6 +220,86 @@ const ShareCard = ({ analysis, attempt, quiz, forwardedRef }: { analysis: any, a
     )
 }
 
+
+const DeepAnalysis = ({ attempt }: { attempt: QuizAttempt }) => {
+    if (!attempt?.deepAnalysis) {
+        return null;
+    }
+
+    const subjects = Object.values(attempt.deepAnalysis.subjects || {});
+    const chapters = Object.entries(attempt.deepAnalysis.chapters || {}).map(([code, data]) => ({ code, ...(data as any) }));
+
+    if (subjects.length === 0 && chapters.length === 0) {
+        return null;
+    }
+
+    return (
+        <Card className="shadow-lg bg-card/80 backdrop-blur-sm border-white/10">
+            <CardHeader>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <Dna size={24} /> Deep Scope Analysis
+                    </CardTitle>
+                    <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30">Pro Insight</Badge>
+                </div>
+            </CardHeader>
+            <CardContent className="grid md:grid-cols-2 gap-6">
+                {/* Column A: Subject Performance */}
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-lg">Subject Performance</h4>
+                    {subjects.map((subject: any, index: number) => {
+                        const total = subject.correct + subject.incorrect;
+                        const correctPercentage = total > 0 ? (subject.correct / total) * 100 : 0;
+                        const incorrectPercentage = total > 0 ? (subject.incorrect / total) * 100 : 0;
+                        return (
+                            <div key={index} className="p-4 rounded-lg bg-secondary">
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="font-bold text-base">{subject.name}</p>
+                                    <p className={`font-bold text-lg ${subject.score >= 0 ? 'text-green-400' : 'text-red-400'}`}>{subject.score >= 0 ? '+' : ''}{subject.score} Marks</p>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2 flex overflow-hidden">
+                                    <div className="bg-green-500 h-2" style={{ width: `${correctPercentage}%` }}></div>
+                                    <div className="bg-red-500 h-2" style={{ width: `${incorrectPercentage}%` }}></div>
+                                </div>
+                                <div className="flex items-center text-xs mt-2 text-muted-foreground gap-4">
+                                    <span className='flex items-center gap-1'> <Check size={14} className="text-green-500" /> {subject.correct} Correct</span>
+                                    <span className='flex items-center gap-1'> <X size={14} className="text-red-500" /> {subject.incorrect} Wrong</span>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+
+                {/* Column B: Chapter Weakness Radar */}
+                <div>
+                     <h4 className="font-semibold text-lg mb-4">Chapter Weakness Radar</h4>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                        {chapters.map((chapter: any, index: number) => {
+                            const total = chapter.correct + chapter.incorrect;
+                            const accuracy = total > 0 ? (chapter.correct / total) * 100 : 0;
+                            
+                            let badgeClass = "border-yellow-500/30 bg-yellow-500/20 text-yellow-500";
+                            if (accuracy >= 75) badgeClass = "border-green-500/30 bg-green-500/20 text-green-500";
+                            if (accuracy < 40) badgeClass = "border-red-500/30 bg-red-500/20 text-red-500";
+
+                            return (
+                                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
+                                    <div>
+                                        <p className="font-mono text-sm font-semibold">#{chapter.code}</p>
+                                        <p className="text-xs text-muted-foreground">{chapter.subject}</p>
+                                    </div>
+                                    <Badge variant="outline" className={cn("font-bold", badgeClass)}>{accuracy.toFixed(0)}% Accuracy</Badge>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
+
+
 export default function ResultPage() {
     const router = useRouter();
     const params = useParams();
@@ -314,6 +394,7 @@ export default function ResultPage() {
             
             <VitalSigns analysis={analysis} attempt={attempt} />
             <SubjectPerformanceChart data={analysis.subjectPerformance} />
+            {attempt && <DeepAnalysis attempt={attempt} />}
             <QuestionReview flatQuestions={flatQuestions} attempt={attempt} />
 
             <Card className="shadow-lg sticky bottom-4 z-20 bg-card/80 backdrop-blur-sm border-white/10">

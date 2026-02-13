@@ -67,6 +67,7 @@ export interface QuizAttempt {
   completedAt: any; // Allow Firestore Timestamp
 
   sectionPerformance: SectionPerformance[];
+  deepAnalysis?: any;
 }
 
 export interface AssignedQuiz {
