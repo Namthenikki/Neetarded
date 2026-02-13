@@ -285,7 +285,7 @@ const DeepAnalysis = ({ attempt }: { attempt: QuizAttempt }) => {
                             return (
                                 <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                                     <div>
-                                        <p className="font-mono text-sm font-semibold">#{chapter.code}</p>
+                                        <p className="font-semibold">{chapter.name}</p>
                                         <p className="text-xs text-muted-foreground">{chapter.subject}</p>
                                     </div>
                                     <Badge variant="outline" className={cn("font-bold", badgeClass)}>{accuracy.toFixed(0)}% Accuracy</Badge>
@@ -410,3 +410,5 @@ export default function ResultPage() {
         </motion.div>
     );
 }
+
+    
