@@ -40,7 +40,9 @@ type AuraData = {
 };
 
 const AuraChapterCard = ({ chapter, code }: { chapter: AggregatedChapter, code: string }) => {
-    const strengthColor = chapter.strength > 75 ? "bg-green-500" : chapter.strength > 40 ? "bg-yellow-500" : "bg-red-500";
+    const strength = chapter.strength;
+    const strengthColor = strength > 75 ? "bg-green-500" : strength > 40 ? "bg-yellow-500" : "bg-red-500";
+    const strengthTextColor = strength > 75 ? "text-green-500" : strength > 40 ? "text-yellow-600" : "text-red-500";
 
     return (
         <Card className="bg-background">
@@ -61,9 +63,9 @@ const AuraChapterCard = ({ chapter, code }: { chapter: AggregatedChapter, code: 
                     <div>
                          <div className="flex justify-between items-center mb-1">
                             <span className="text-sm text-muted-foreground flex items-center gap-1.5"><TrendingUp size={14}/> Chapter Strength</span>
-                            <span className="text-sm font-bold text-primary">{chapter.strength.toFixed(1)}%</span>
+                            <span className={cn("text-sm font-bold", strengthTextColor)}>{strength.toFixed(1)}%</span>
                         </div>
-                        <Progress value={chapter.strength} className="h-2" indicatorClassName={strengthColor}/>
+                        <Progress value={strength} className="h-2" indicatorClassName={strengthColor}/>
                     </div>
                 </div>
             </CardContent>
@@ -276,7 +278,12 @@ export default function AuraPage() {
 
 
              <Accordion type="multiple" className="w-full space-y-4">
-                {sortedAuraData.map((sectionData) => (
+                {sortedAuraData.map((sectionData) => {
+                    const subjectStrength = sectionData.subjectStrength;
+                    const strengthColor = subjectStrength > 75 ? "bg-green-500" : subjectStrength > 40 ? "bg-yellow-500" : "bg-red-500";
+                    const strengthTextColor = subjectStrength > 75 ? "text-green-500" : subjectStrength > 40 ? "text-yellow-600" : "text-red-500";
+
+                    return (
                     <AccordionItem key={sectionData.id} value={sectionData.id} className="bg-card rounded-xl border">
                         <AccordionTrigger className="p-4 text-xl font-bold hover:no-underline text-slate-800 w-full">
                            <div className="flex items-center justify-between w-full">
@@ -286,8 +293,8 @@ export default function AuraPage() {
                                 </div>
                                 <div className="flex items-center gap-3 text-sm mr-4">
                                     <span className="font-medium text-muted-foreground flex items-center gap-1.5"><TrendingUp size={16}/> Subject Strength</span>
-                                    <Progress value={sectionData.subjectStrength} className="w-32 h-2" />
-                                    <span className="font-bold text-base text-primary">{sectionData.subjectStrength.toFixed(0)}%</span>
+                                    <Progress value={subjectStrength} className="w-32 h-2" indicatorClassName={strengthColor} />
+                                    <span className={cn("font-bold text-base", strengthTextColor)}>{subjectStrength.toFixed(0)}%</span>
                                 </div>
                            </div>
                         </AccordionTrigger>
@@ -301,8 +308,10 @@ export default function AuraPage() {
                             </div>
                         </AccordionContent>
                     </AccordionItem>
-                ))}
+                )})}
             </Accordion>
         </div>
     )
 }
+
+    
