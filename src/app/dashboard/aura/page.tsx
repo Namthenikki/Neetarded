@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -6,7 +7,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { type QuizAttempt } from "@/types/quiz";
 import { QUIZ_SUBJECTS } from "@/lib/quiz-data";
-import { Loader2, Sparkles, TrendingUp, BookOpen, Target } from "lucide-react";
+import { Loader2, Sparkles, TrendingUp, BookOpen, Target, AlertTriangle, TrendingDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
@@ -23,6 +24,8 @@ interface AggregatedChapter {
     totalCorrectQuestions: number;
     strength: number;
     lastAttemptedAt: Date;
+    sectionName: string; // for flattened list
+    code: string; // for flattened list
 }
 
 interface AggregatedSection {
@@ -68,6 +71,30 @@ const AuraChapterCard = ({ chapter, code }: { chapter: AggregatedChapter, code: 
     )
 };
 
+const AuraWarningList = ({ title, description, chapters, icon, cardClassName, badgeClassName }: { title: string, description: string, chapters: AggregatedChapter[], icon: React.ReactNode, cardClassName: string, badgeClassName: string }) => {
+    if (chapters.length === 0) return null;
+
+    return (
+        <Card className={cn("shadow-lg", cardClassName)}>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl font-bold">{icon} {title}</CardTitle>
+                <CardDescription>{description}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                {chapters.map(chapter => (
+                    <div key={chapter.code} className="flex justify-between items-center p-3 rounded-lg bg-background/50 shadow-sm">
+                        <div>
+                            <p className="font-semibold">{chapter.name}</p>
+                            <p className="text-sm text-muted-foreground">{chapter.sectionName}</p>
+                        </div>
+                        <Badge variant="outline" className={cn("text-base font-bold", badgeClassName)}>{chapter.strength.toFixed(0)}%</Badge>
+                    </div>
+                ))}
+            </CardContent>
+        </Card>
+    );
+};
+
 
 export default function AuraPage() {
     const { user, loading: authLoading } = useAuth();
@@ -103,7 +130,7 @@ export default function AuraPage() {
                             totalCorrectQuestions: 0,
                             lastAttemptedAt: new Date(0),
                             strength: 0,
-                        };
+                        } as AggregatedChapter;
                     }
 
                     const chapterAgg = aggregation[sectionId].chapters[chapterCode];
@@ -170,9 +197,24 @@ export default function AuraPage() {
         fetchAuraData();
     }, [user]);
 
-    const sortedAuraData = useMemo(() => {
-        if (!auraData) return [];
-        return Object.entries(auraData).sort(([idA], [idB]) => idA.localeCompare(idB));
+    const { sortedAuraData, auraDebtChapters, auraNegativeChapters } = useMemo(() => {
+        if (!auraData) return { sortedAuraData: [], auraDebtChapters: [], auraNegativeChapters: [] };
+
+        const allChapters: AggregatedChapter[] = Object.entries(auraData).flatMap(([sectionId, sectionData]) =>
+            Object.entries(sectionData.chapters).map(([chapterCode, chapterData]) => ({
+                ...chapterData,
+                sectionName: sectionData.name,
+                code: chapterCode,
+            }))
+        );
+
+        const debt = allChapters.filter(c => c.strength < 30).sort((a, b) => a.strength - b.strength);
+        const negative = allChapters.filter(c => c.strength >= 30 && c.strength < 60).sort((a, b) => a.strength - b.strength);
+        
+        const sortedData = Object.entries(auraData).sort(([idA], [idB]) => idA.localeCompare(idB));
+
+        return { sortedAuraData: sortedData, auraDebtChapters: debt, auraNegativeChapters: negative };
+
     }, [auraData]);
 
 
@@ -203,6 +245,26 @@ export default function AuraPage() {
                 <p className="text-slate-600">Your dynamic learning DNA, showing strengths and weaknesses across all attempts.</p>
             </header>
 
+            <div className="grid md:grid-cols-2 gap-8">
+                <AuraWarningList
+                    title="Aura Debt"
+                    description="Chapters with strength below 30%. Focus here first."
+                    chapters={auraDebtChapters}
+                    icon={<AlertTriangle className="text-red-500" />}
+                    cardClassName="border-red-500/50 bg-red-500/5"
+                    badgeClassName="border-red-500/30 bg-red-500/20 text-red-500"
+                />
+                <AuraWarningList
+                    title="Aura Negative"
+                    description="Chapters with strength between 30% and 60%. These need practice."
+                    chapters={auraNegativeChapters}
+                    icon={<TrendingDown className="text-yellow-500" />}
+                    cardClassName="border-yellow-500/50 bg-yellow-500/5"
+                    badgeClassName="border-yellow-500/30 bg-yellow-500/20 text-yellow-600"
+                />
+            </div>
+
+
              <Accordion type="multiple" className="w-full space-y-4" defaultValue={sortedAuraData.map(([id]) => id)}>
                 {sortedAuraData.map(([sectionId, sectionData]) => (
                     <AccordionItem key={sectionId} value={sectionId} className="bg-card rounded-xl border">
@@ -217,7 +279,7 @@ export default function AuraPage() {
                                 {Object.entries(sectionData.chapters)
                                     .sort(([, chapA], [, chapB]) => chapA.name.localeCompare(chapB.name))
                                     .map(([chapterCode, chapter]) => (
-                                    <AuraChapterCard key={chapterCode} chapter={chapter} code={`${sectionId}-${chapterCode}`} />
+                                    <AuraChapterCard key={chapterCode} chapter={chapter as AggregatedChapter} code={`${sectionId}-${chapterCode}`} />
                                 ))}
                             </div>
                         </AccordionContent>
