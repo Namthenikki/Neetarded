@@ -22,6 +22,7 @@ interface AggregatedChapter {
     totalAttemptedQuestions: number;
     totalCorrectQuestions: number;
     strength: number;
+    lastAttemptedAt: Date;
 }
 
 interface AggregatedSection {
@@ -77,7 +78,7 @@ export default function AuraPage() {
         if (!user) return;
 
         const processAttempts = (attempts: QuizAttempt[]): AuraData => {
-            const aggregation: { [sectionId: string]: { name: string; chapters: { [chapterCode: string]: any } } } = {};
+            const aggregation: AuraData = {};
 
             for (const attempt of attempts) {
                 if (!attempt.deepAnalysis?.chapters) continue;
@@ -85,7 +86,7 @@ export default function AuraPage() {
                 for (const [chapterCode, chapterData] of Object.entries(attempt.deepAnalysis.chapters as any)) {
                     
                     const sectionName = chapterData.subject;
-                    const sectionId = subjectNameMap.get(sectionName);
+                    const sectionId = subjectNameMap.get(sectionName) as keyof AuraData;
                     if (!sectionId) continue;
 
                     // Initialize section if not present
@@ -100,6 +101,8 @@ export default function AuraPage() {
                             attemptQuizIds: new Set<string>(),
                             totalAttemptedQuestions: 0,
                             totalCorrectQuestions: 0,
+                            lastAttemptedAt: new Date(0),
+                            strength: 0,
                         };
                     }
 
@@ -108,15 +111,33 @@ export default function AuraPage() {
                     const attemptedInThisQuiz = chapterData.correct + chapterData.incorrect;
                     chapterAgg.totalAttemptedQuestions += attemptedInThisQuiz;
                     chapterAgg.totalCorrectQuestions += chapterData.correct;
+                    
+                    if (attempt.completedAt > chapterAgg.lastAttemptedAt) {
+                        chapterAgg.lastAttemptedAt = attempt.completedAt;
+                    }
                 }
             }
 
-            // Final calculation of strength
+            // Final calculation of strength with time decay
+            const currentDate = new Date();
             for (const section of Object.values(aggregation)) {
                 for (const chapter of Object.values(section.chapters)) {
-                    chapter.strength = chapter.totalAttemptedQuestions > 0
+                    const baseStrength = chapter.totalAttemptedQuestions > 0
                         ? (chapter.totalCorrectQuestions / chapter.totalAttemptedQuestions) * 100
                         : 0;
+
+                    const daysSinceLastAttempt = (currentDate.getTime() - chapter.lastAttemptedAt.getTime()) / (1000 * 3600 * 24);
+
+                    // Apply decay only after a 7-day grace period
+                    if (daysSinceLastAttempt > 7) {
+                        const decayableDays = daysSinceLastAttempt - 7;
+                        // Strength has a half-life of 60 days after the grace period
+                        const halfLife = 60; 
+                        const decayFactor = Math.pow(0.5, decayableDays / halfLife);
+                        chapter.strength = baseStrength * decayFactor;
+                    } else {
+                        chapter.strength = baseStrength;
+                    }
                 }
             }
 
@@ -128,7 +149,13 @@ export default function AuraPage() {
             try {
                 const q = query(collection(db, "attempts"), where("studentId", "==", user.studentId));
                 const querySnapshot = await getDocs(q);
-                const attempts = querySnapshot.docs.map(doc => doc.data() as QuizAttempt);
+                const attempts = querySnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        ...data,
+                        completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(),
+                    } as QuizAttempt
+                });
                 
                 const processedData = processAttempts(attempts);
                 setAuraData(processedData);
