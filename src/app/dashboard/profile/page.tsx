@@ -1,12 +1,13 @@
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User, Mail, Shield } from "lucide-react";
+import { User, Shield, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const getInitials = (name: string = '') => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -37,20 +38,19 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex items-center gap-4 rounded-lg border p-4 bg-background">
-              <Mail className="h-6 w-6 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Email Address</p>
-                <p className="font-semibold">{user.email}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 rounded-lg border p-4 bg-background">
               <Shield className="h-6 w-6 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Unique ID</p>
-                <p className="font-semibold font-mono tracking-widest">{user.uniqueId}</p>
+                <p className="font-semibold font-mono tracking-widest">{user.studentId}</p>
               </div>
             </div>
           </CardContent>
+          <CardFooter className="pt-6">
+            <Button variant="destructive" className="w-full" onClick={logout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Logout</span>
+            </Button>
+          </CardFooter>
         </Card>
       )}
     </div>
