@@ -9,6 +9,7 @@ import {
   LogOut,
   Shield,
   Library,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,6 +29,7 @@ import { Button } from "../ui/button";
 
 const studentNavLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/dashboard/aura", icon: Sparkles, label: "Aura" },
   { href: "/dashboard/my-library", icon: Library, label: "My Library" },
   { href: "/dashboard/quizzes", icon: BookCopy, label: "My Quizzes" },
   { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
