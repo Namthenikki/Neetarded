@@ -79,7 +79,7 @@ const ChapterManager = ({ section, sectionIndex, onChapterUpdate }: { section: a
                     <div key={chapter.binaryCode} className="flex items-center gap-2 p-2 rounded-lg bg-background">
                         <div className="flex-grow">
                             <p className="font-medium">{chapter.name}</p>
-                            <code className="text-sm text-muted-foreground">{chapter.binaryCode}</code>
+                            <code className="text-sm text-muted-foreground">{section.id}-{chapter.binaryCode}</code>
                         </div>
                         <Button
                         variant="ghost"
