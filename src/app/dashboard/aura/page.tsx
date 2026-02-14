@@ -202,7 +202,7 @@ export default function AuraPage() {
 
         const allChapters: AggregatedChapter[] = Object.entries(auraData).flatMap(([sectionId, sectionData]) =>
             Object.entries(sectionData.chapters).map(([chapterCode, chapterData]) => ({
-                ...chapterData,
+                ...(chapterData as AggregatedChapter),
                 sectionName: sectionData.name,
                 code: chapterCode,
             }))
@@ -211,9 +211,19 @@ export default function AuraPage() {
         const debt = allChapters.filter(c => c.strength < 30).sort((a, b) => a.strength - b.strength);
         const negative = allChapters.filter(c => c.strength >= 30 && c.strength < 60).sort((a, b) => a.strength - b.strength);
         
-        const sortedData = Object.entries(auraData).sort(([idA], [idB]) => idA.localeCompare(idB));
+        const dataWithSubjectStrength = Object.entries(auraData).map(([sectionId, sectionData]) => {
+            const chapters = Object.values(sectionData.chapters);
+            const totalStrength = chapters.reduce((sum, chapter) => sum + (chapter as AggregatedChapter).strength, 0);
+            const subjectStrength = chapters.length > 0 ? totalStrength / chapters.length : 0;
+            return {
+                id: sectionId,
+                ...sectionData,
+                subjectStrength
+            };
+        }).sort((a, b) => a.id.localeCompare(b.id));
 
-        return { sortedAuraData: sortedData, auraDebtChapters: debt, auraNegativeChapters: negative };
+
+        return { sortedAuraData: dataWithSubjectStrength, auraDebtChapters: debt, auraNegativeChapters: negative };
 
     }, [auraData]);
 
@@ -265,21 +275,28 @@ export default function AuraPage() {
             </div>
 
 
-             <Accordion type="multiple" className="w-full space-y-4" defaultValue={sortedAuraData.map(([id]) => id)}>
-                {sortedAuraData.map(([sectionId, sectionData]) => (
-                    <AccordionItem key={sectionId} value={sectionId} className="bg-card rounded-xl border">
-                        <AccordionTrigger className="p-4 text-xl font-bold hover:no-underline text-slate-800">
-                           <div className="flex items-center gap-3">
-                                {sectionData.name} 
-                                <Badge variant="secondary">{Object.keys(sectionData.chapters).length} Chapters</Badge>
+             <Accordion type="multiple" className="w-full space-y-4">
+                {sortedAuraData.map((sectionData) => (
+                    <AccordionItem key={sectionData.id} value={sectionData.id} className="bg-card rounded-xl border">
+                        <AccordionTrigger className="p-4 text-xl font-bold hover:no-underline text-slate-800 w-full">
+                           <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-3">
+                                    {sectionData.name} 
+                                    <Badge variant="secondary">{Object.keys(sectionData.chapters).length} Chapters</Badge>
+                                </div>
+                                <div className="flex items-center gap-3 text-sm mr-4">
+                                    <span className="font-medium text-muted-foreground flex items-center gap-1.5"><TrendingUp size={16}/> Subject Strength</span>
+                                    <Progress value={sectionData.subjectStrength} className="w-32 h-2" />
+                                    <span className="font-bold text-base text-primary">{sectionData.subjectStrength.toFixed(0)}%</span>
+                                </div>
                            </div>
                         </AccordionTrigger>
                         <AccordionContent className="p-4 pt-0">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {Object.entries(sectionData.chapters)
-                                    .sort(([, chapA], [, chapB]) => chapA.name.localeCompare(chapB.name))
+                                    .sort(([, chapA], [, chapB]) => (chapA as AggregatedChapter).name.localeCompare((chapB as AggregatedChapter).name))
                                     .map(([chapterCode, chapter]) => (
-                                    <AuraChapterCard key={chapterCode} chapter={chapter as AggregatedChapter} code={`${sectionId}-${chapterCode}`} />
+                                    <AuraChapterCard key={chapterCode} chapter={chapter as AggregatedChapter} code={`${sectionData.id}-${chapterCode}`} />
                                 ))}
                             </div>
                         </AccordionContent>
