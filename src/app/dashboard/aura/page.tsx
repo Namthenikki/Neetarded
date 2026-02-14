@@ -285,17 +285,17 @@ export default function AuraPage() {
 
                     return (
                     <AccordionItem key={sectionData.id} value={sectionData.id} className="bg-card rounded-xl border">
-                        <AccordionTrigger className="p-4 text-xl font-bold hover:no-underline text-slate-800 w-full">
-                           <div className="flex items-center justify-between w-full">
-                                <div className="flex items-center gap-3">
-                                    {sectionData.name} 
+                        <AccordionTrigger className="p-4 hover:no-underline text-slate-800 w-full">
+                           <div className="w-full mr-4">
+                               <div className="flex justify-between items-center w-full">
+                                    <span className="text-xl font-bold">{sectionData.name}</span>
                                     <Badge variant="secondary">{Object.keys(sectionData.chapters).length} Chapters</Badge>
-                                </div>
-                                <div className="flex items-center gap-3 text-sm mr-4">
+                               </div>
+                               <div className="flex items-center gap-3 text-sm mt-2">
                                     <span className="font-medium text-muted-foreground flex items-center gap-1.5"><TrendingUp size={16}/> Subject Strength</span>
-                                    <Progress value={subjectStrength} className="w-32 h-2" indicatorClassName={strengthColor} />
+                                    <Progress value={subjectStrength} className="flex-1 h-2" indicatorClassName={strengthColor} />
                                     <span className={cn("font-bold text-base", strengthTextColor)}>{subjectStrength.toFixed(0)}%</span>
-                                </div>
+                               </div>
                            </div>
                         </AccordionTrigger>
                         <AccordionContent className="p-4 pt-0">
@@ -313,5 +313,3 @@ export default function AuraPage() {
         </div>
     )
 }
-
-    
