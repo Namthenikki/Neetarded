@@ -246,7 +246,7 @@ const QuestionReview = ({
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <p className="mb-4 font-serif">{q.text}</p>
+                                <p className="mb-4 font-serif whitespace-pre-wrap">{q.text}</p>
                                 <div className="space-y-2">
                                     {q.options.map(opt => {
                                         const isCorrectOption = opt.id === q.correctOptionId;

@@ -394,7 +394,7 @@ export default function QuizPage() {
                             </Button>
                         </div>
                     </div>
-                    <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed">{currentQuestion.text}</p>
+                    <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed whitespace-pre-wrap">{currentQuestion.text}</p>
                   </CardContent>
                 </Card>
                 <div className="mt-8 space-y-3">
