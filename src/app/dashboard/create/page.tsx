@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, Trash2, BookPlus, Loader2, BrainCircuit, Rocket, CheckCircle, Share2, Send } from "lucide-react";
+import { Plus, Trash2, BookPlus, Loader2, BrainCircuit, Rocket, CheckCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { generateBinaryCode } from "@/lib/binaryUtils";
+import { QUIZ_SUBJECTS, getSubjectById, type ChapterData } from "@/lib/quiz-data";
 import type { QuizStructure, Chapter, QuizSettings } from "@/types/quiz";
 import { useToast } from "@/hooks/use-toast";
 import { doc, setDoc, addDoc, collection, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
@@ -31,6 +31,95 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+
+// A small sub-component to manage adding chapters to a section
+const ChapterManager = ({ section, sectionIndex, onChapterUpdate }: { section: any, sectionIndex: number, onChapterUpdate: (sectionIndex: number, newChapters: Chapter[]) => void }) => {
+    const [selectedChapterCode, setSelectedChapterCode] = useState<string>('');
+    const subjectData = getSubjectById(section.id);
+    
+    const availableChapters = useMemo(() => {
+        if (!subjectData) return [];
+        const existingChapterCodes = new Set(section.chapters.map((c: Chapter) => c.binaryCode));
+        return subjectData.chapters.filter(c => !existingChapterCodes.has(c.binaryCode));
+    }, [subjectData, section.chapters]);
+
+    const handleAddChapter = () => {
+        if (!selectedChapterCode) return;
+        const chapterToAdd = subjectData?.chapters.find(c => c.binaryCode === selectedChapterCode);
+        if (chapterToAdd) {
+            const newChapter: Chapter = {
+                name: chapterToAdd.name,
+                binaryCode: chapterToAdd.binaryCode,
+                questions: [],
+            }
+            onChapterUpdate(sectionIndex, [...section.chapters, newChapter]);
+        }
+        setSelectedChapterCode(''); // Reset dropdown
+    }
+
+    const handleRemoveChapter = (chapterIndex: number) => {
+        const newChapters = section.chapters.filter((_: any, cIndex: number) => cIndex !== chapterIndex);
+        onChapterUpdate(sectionIndex, newChapters);
+    }
+    
+    return (
+        <CardContent className="p-4">
+            {section.chapters.length > 0 ? (
+                <div className="space-y-3">
+                <Label className="text-xs text-muted-foreground">Chapters</Label>
+                {section.chapters.map((chapter: Chapter, chapterIndex: number) => (
+                    <div key={chapter.binaryCode} className="flex items-center gap-2 p-2 rounded-lg bg-background">
+                        <div className="flex-grow">
+                            <p className="font-medium">{chapter.name}</p>
+                            <code className="text-sm text-muted-foreground">{chapter.binaryCode}</code>
+                        </div>
+                        <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveChapter(chapterIndex)}
+                        >
+                        <Trash2 className="h-4 w-4 text-destructive/70" />
+                        </Button>
+                    </div>
+                ))}
+                </div>
+            ) : (
+                <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet. Add one below.</p>
+            )}
+
+            {availableChapters.length > 0 && (
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                    <Select value={selectedChapterCode} onValueChange={setSelectedChapterCode}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a chapter..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {availableChapters.map(chapter => (
+                                <SelectItem key={chapter.binaryCode} value={chapter.binaryCode}>{chapter.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddChapter}
+                        disabled={!selectedChapterCode}
+                    >
+                        <Plus className="mr-2 h-4 w-4" /> Add
+                    </Button>
+                </div>
+            )}
+        </CardContent>
+    )
+}
 
 
 export default function CreateQuizPage() {
@@ -58,6 +147,7 @@ export default function CreateQuizPage() {
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [deployStudentIds, setDeployStudentIds] = useState("");
   const [isDeploying, setIsDeploying] = useState(false);
+  const [subjectToAdd, setSubjectToAdd] = useState<string>('');
 
 
   const hasQuestions = useMemo(() => {
@@ -66,101 +156,47 @@ export default function CreateQuizPage() {
     );
   }, [structure]);
 
-  const getAllBinaryCodes = () => {
-    return structure.flatMap((section) =>
-      section.chapters.map((chapter) => chapter.binaryCode)
-    );
-  };
+  const availableSubjects = useMemo(() => {
+      const existingSubjectIds = new Set(structure.map(s => s.id));
+      return QUIZ_SUBJECTS.filter(s => !existingSubjectIds.has(s.id));
+  }, [structure]);
 
   const handleAddSection = () => {
-    setStructure([...structure, { id: "", name: "", chapters: [] }]);
-  };
+    if (!subjectToAdd) return;
+    const subjectData = QUIZ_SUBJECTS.find(s => s.id === subjectToAdd);
+    if (!subjectData) return;
 
-  const handleUpdateSection = (
-    index: number,
-    field: "name" | "id",
-    value: string
-  ) => {
-    const newStructure = [...structure];
-    let processedValue = value;
-    if (field === "id") {
-      processedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
-    }
-    newStructure[index] = { ...newStructure[index], [field]: processedValue };
-    setStructure(newStructure);
+    const newSection = {
+        id: subjectData.id,
+        name: subjectData.name,
+        chapters: []
+    };
+    setStructure([...structure, newSection]);
+    setSubjectToAdd(''); // Reset dropdown
   };
 
   const handleRemoveSection = (index: number) => {
     setStructure(structure.filter((_, i) => i !== index));
   };
 
-  const handleAddChapter = (sectionIndex: number) => {
-    const newStructure = structure.map((section, index) => {
-      if (index === sectionIndex) {
-        const existingCodes = getAllBinaryCodes();
-        const newChapter: Chapter = {
-          name: "", // Start with an empty name
-          binaryCode: generateBinaryCode(existingCodes),
-          questions: [],
-        };
-        return {
-          ...section,
-          chapters: [...section.chapters, newChapter],
-        };
-      }
-      return section;
-    });
-    setStructure(newStructure);
-  };
-
-  const handleUpdateChapter = (sectionIndex: number, chapterIndex: number, name: string) => {
-    const newStructure = structure.map((section, sIndex) => {
-      if (sIndex === sectionIndex) {
-        const newChapters = section.chapters.map((chapter, cIndex) => {
-          if (cIndex === chapterIndex) {
-            return { ...chapter, name: name };
-          }
-          return chapter;
-        });
-        return { ...section, chapters: newChapters };
-      }
-      return section;
-    });
-    setStructure(newStructure);
-  };
-
-  const handleRemoveChapter = (sectionIndex: number, chapterIndex: number) => {
-    const newStructure = structure.map((section, sIndex) => {
-      if (sIndex === sectionIndex) {
-        const newChapters = section.chapters.filter((_, cIndex) => cIndex !== chapterIndex);
-        return { ...section, chapters: newChapters };
-      }
-      return section;
-    });
-    setStructure(newStructure);
-  };
-
+  const handleChapterUpdate = (sectionIndex: number, newChapters: Chapter[]) => {
+      const newStructure = [...structure];
+      newStructure[sectionIndex].chapters = newChapters;
+      setStructure(newStructure);
+  }
 
   const validateStructure = () => {
-    const sectionIds = new Set<string>();
-    for (const section of structure) {
-      if (!section.name.trim() || !section.id.trim()) {
-        toast({ variant: "destructive", title: `Incomplete Section`, description: "Please provide a name and ID for all sections."});
+    if (!title.trim()) {
+        toast({ variant: "destructive", title: `Missing Title`, description: "Please provide a title for your quiz."});
         return false;
-      }
-      if (section.id.length !== 3) {
-        toast({ variant: "destructive", title: `Invalid Section ID`, description: `Section ID "${section.id}" must be 3 characters long.`});
-        return false;
-      }
-      if (sectionIds.has(section.id)) {
-        toast({ variant: "destructive", title: `Duplicate Section ID`, description: `Section ID "${section.id}" must be unique.`});
-        return false;
-      }
-      if (section.chapters.some(ch => !ch.name.trim())) {
-         toast({ variant: "destructive", title: `Incomplete Chapter`, description: `Please provide a name for all chapters in section "${section.name}".`});
-        return false;
-      }
-      sectionIds.add(section.id);
+    }
+     if (structure.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Structure Not Defined",
+        description: "Please add at least one section.",
+      });
+      return false;
     }
     return true;
   };
@@ -174,11 +210,11 @@ export default function CreateQuizPage() {
       });
       return;
     }
-    if (structure.length === 0) {
+    if (structure.length === 0 || structure.every(s => s.chapters.length === 0)) {
       toast({
         variant: "destructive",
         title: "Structure Not Defined",
-        description: "Please define at least one section and chapter before parsing.",
+        description: "Please add at least one section and chapter before parsing.",
       });
       return;
     }
@@ -219,13 +255,13 @@ export default function CreateQuizPage() {
   };
   
   const handleFinalize = async () => {
-    if (!title.trim() || !hasQuestions) {
-      alert("Please add a Title and at least one Question first!");
-      return;
-    }
     if (!validateStructure()) return;
+    if (!hasQuestions) {
+        toast({ variant: 'destructive', title: "No Questions", description: "The quiz must have at least one question parsed by the AI." });
+        return;
+    }
     if (!user) {
-      alert("You must be logged in to save a quiz.");
+      toast({ variant: 'destructive', title: "Authentication Error", description: "You must be logged in to save a quiz." });
       return;
     }
 
@@ -240,9 +276,9 @@ export default function CreateQuizPage() {
         title,
         settings,
         structure,
-        isPublished: false, // Deployed quizzes are published implicitly
+        isPublished: false,
         createdAt: serverTimestamp(),
-        ownerId: user.studentId, // Using studentId for ownership
+        ownerId: user.studentId,
       };
       
       console.log("Attempting to save to 'quizzes' collection...", quizPayload);
@@ -271,7 +307,7 @@ export default function CreateQuizPage() {
 
     } catch (error: any) {
       console.error("SAVE FAILED:", error);
-      alert("SAVE FAILED: " + error.message);
+      toast({ variant: 'destructive', title: "Save Failed", description: error.message });
       setIsPorting(false);
       setUploadProgress(0);
     }
@@ -292,11 +328,9 @@ export default function CreateQuizPage() {
         const studentIds = deployStudentIds.split(',').map(id => id.trim().toLowerCase()).filter(id => id);
         const batch = writeBatch(db);
 
-        // 1. Set the quiz to published
         const quizRef = doc(db, "quizzes", quizId);
         batch.update(quizRef, { isPublished: true });
 
-        // 2. Create assignments for each student
         for (const studentId of studentIds) {
             const assignmentRef = doc(collection(db, "assigned_quizzes"));
             batch.set(assignmentRef, {
@@ -415,32 +449,17 @@ export default function CreateQuizPage() {
           <CardHeader>
             <CardTitle>2. Quiz Structure</CardTitle>
             <CardDescription>
-              Define sections and chapters. Use the AI parser to fill them with questions.
+              Add sections and chapters from the predefined list.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {structure.map((section, sectionIndex) => (
-                <Card key={sectionIndex} className="overflow-hidden bg-background">
+                <Card key={section.id} className="overflow-hidden bg-background">
                   <CardHeader className="flex flex-row items-center justify-between bg-muted/30 p-3">
                     <div className="flex flex-1 items-center gap-4">
-                      <Input
-                        placeholder="Section Name (e.g., Physics)"
-                        value={section.name}
-                        onChange={(e) =>
-                          handleUpdateSection(sectionIndex, "name", e.target.value)
-                        }
-                        className="text-lg font-semibold border-0 focus-visible:ring-1"
-                      />
-                      <Input
-                        placeholder="ID"
-                        value={section.id}
-                        onChange={(e) =>
-                          handleUpdateSection(sectionIndex, "id", e.target.value)
-                        }
-                        maxLength={3}
-                        className="w-24 text-lg font-mono tracking-widest border-0 focus-visible:ring-1 uppercase"
-                      />
+                      <h3 className="text-lg font-semibold">{section.name}</h3>
+                      <code className="text-lg font-mono tracking-widest bg-muted px-2 py-1 rounded">{section.id}</code>
                     </div>
                     <Button
                       variant="ghost"
@@ -450,53 +469,31 @@ export default function CreateQuizPage() {
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </CardHeader>
-                  <CardContent className="p-4">
-                     {section.chapters.length > 0 ? (
-                       <div className="space-y-3">
-                         <Label className="text-xs text-muted-foreground">Chapters</Label>
-                        {section.chapters.map((chapter, chapterIndex) => (
-                          <div key={chapter.binaryCode} className="flex items-center gap-2">
-                             <Input
-                                placeholder="Chapter name"
-                                value={chapter.name}
-                                onChange={(e) => handleUpdateChapter(sectionIndex, chapterIndex, e.target.value)}
-                              />
-                              <code className="text-sm bg-muted px-2 py-1 rounded">
-                                {chapter.binaryCode}
-                              </code>
-                               <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleRemoveChapter(sectionIndex, chapterIndex)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive/70" />
-                              </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet. Click 'Add Chapter' to start.</p>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-4"
-                      onClick={() => handleAddChapter(sectionIndex)}
-                      disabled={!section.id}
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> Add Chapter
-                    </Button>
-                  </CardContent>
+                  <ChapterManager section={section} sectionIndex={sectionIndex} onChapterUpdate={handleChapterUpdate} />
                 </Card>
               ))}
             </div>
-            <Button
-              className="mt-4 w-full"
-              variant="outline"
-              onClick={handleAddSection}
-            >
-              <BookPlus className="mr-2 h-4 w-4" /> Add Section
-            </Button>
+            {availableSubjects.length > 0 && (
+                <div className="flex items-center gap-2 mt-4 p-4 border-t">
+                    <Select value={subjectToAdd} onValueChange={setSubjectToAdd}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a subject to add..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {availableSubjects.map(subject => (
+                                <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button
+                        variant="outline"
+                        onClick={handleAddSection}
+                        disabled={!subjectToAdd}
+                    >
+                        <BookPlus className="mr-2 h-4 w-4" /> Add Section
+                    </Button>
+                </div>
+            )}
           </CardContent>
         </Card>
 
@@ -640,3 +637,4 @@ export default function CreateQuizPage() {
     </div>
   );
 }
+    
