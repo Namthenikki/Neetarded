@@ -13,10 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2, Star, Flag } from "lucide-react";
+import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2, Star, Flag, Grid3x3 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
 
 type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
@@ -44,6 +45,7 @@ export default function QuizPage() {
   const [starredQuestions, setStarredQuestions] = useState<Set<number>>(new Set());
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
@@ -60,6 +62,10 @@ export default function QuizPage() {
       )
     ).sort((a, b) => a.questionNumber - b.questionNumber);
   }, [quiz]);
+
+  const questionNumberToIndexMap = useMemo(() => 
+    new Map(flatQuestions.map((q, index) => [q.questionNumber, index]))
+  , [flatQuestions]);
   
   useEffect(() => {
       if (authLoading) {
@@ -189,11 +195,16 @@ export default function QuizPage() {
             const sectionQuestions = flatQuestions.filter(q => q.sectionId === section.id);
             const sectionCorrect = sectionQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
             const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
-            
+            const attemptedInThisSection = sectionCorrect + sectionIncorrect;
+            const totalInThisSection = sectionQuestions.length;
+
             return {
-                sectionId: section.id, sectionName: section.name, totalQuestions: sectionQuestions.length,
-                correct: sectionCorrect, incorrect: sectionIncorrect,
-                accuracy: sectionQuestions.length > 0 ? (sectionCorrect / sectionQuestions.length) * 100 : 0
+                sectionId: section.id, 
+                sectionName: section.name, 
+                totalQuestions: totalInThisSection,
+                correct: sectionCorrect, 
+                incorrect: sectionIncorrect,
+                accuracy: totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0
             }
         }),
         deepAnalysis: deepAnalysis,
@@ -265,6 +276,14 @@ export default function QuizPage() {
       setCurrentQuestionIndex(firstQuestionIndex);
     }
   }, [flatQuestions]);
+
+  const handlePaletteSelect = (questionNumber: number) => {
+    const index = questionNumberToIndexMap.get(questionNumber);
+    if (index !== undefined) {
+        setCurrentQuestionIndex(index);
+    }
+    setIsPaletteOpen(false);
+  };
 
   const handleToggleFeature = async (
     question: FlatQuestion,
@@ -361,11 +380,59 @@ export default function QuizPage() {
                         );
                     })}
                 </div>
-                <div className={cn("flex items-center gap-2 font-semibold text-lg shrink-0", timeIsLow ? "text-destructive" : "text-primary")}>
-                    <Timer className="h-6 w-6"/>
-                    <span>
-                        {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
-                    </span>
+                 <div className={cn("flex items-center gap-4 font-semibold text-lg shrink-0")}>
+                    <Sheet open={isPaletteOpen} onOpenChange={setIsPaletteOpen}>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" size="sm" className="rounded-lg">
+                                <Grid3x3 className="mr-2 h-4 w-4"/>
+                                Palette
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left" className="w-full sm:w-[350px] sm:max-w-full p-0">
+                            <SheetHeader className="p-4 border-b">
+                                <SheetTitle>Question Palette</SheetTitle>
+                                <SheetDescription>
+                                    Answered: {Object.keys(answers).length} &bull; Skipped: {flatQuestions.length - Object.keys(answers).length}
+                                </SheetDescription>
+                            </SheetHeader>
+                            <div className="py-4 px-4 space-y-6 overflow-y-auto h-[calc(100vh-8rem)]">
+                                {quiz.structure.map(section => (
+                                    <div key={section.id}>
+                                        <h4 className="font-semibold mb-3 text-base">{section.name}</h4>
+                                        <div className="grid grid-cols-5 gap-2">
+                                            {flatQuestions
+                                                .filter(q => q.sectionId === section.id)
+                                                .map(q => {
+                                                    const isAnswered = answers.hasOwnProperty(q.questionNumber);
+                                                    const isCurrent = q.questionNumber === currentQuestion.questionNumber;
+                                                    return (
+                                                        <Button
+                                                            key={q.questionNumber}
+                                                            onClick={() => handlePaletteSelect(q.questionNumber)}
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className={cn("h-9 w-9 p-0 font-bold text-xs", {
+                                                                "bg-green-500/20 border-green-500/50 text-green-800 hover:bg-green-500/30 dark:text-green-300": isAnswered,
+                                                                "bg-muted border-dashed": !isAnswered,
+                                                                "ring-2 ring-primary ring-offset-2": isCurrent
+                                                            })}
+                                                        >
+                                                            {q.questionNumber}
+                                                        </Button>
+                                                    )
+                                                })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+                    <div className={cn("flex items-center gap-2", timeIsLow ? "text-destructive" : "text-primary")}>
+                        <Timer className="h-6 w-6"/>
+                        <span>
+                            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                        </span>
+                    </div>
                 </div>
             </div>
             <Progress value={progress} className="h-1" />
@@ -384,7 +451,7 @@ export default function QuizPage() {
                 <Card className="bg-transparent border-0 shadow-none rounded-2xl">
                   <CardContent className="p-0">
                     <div className="flex justify-between items-center mb-4">
-                        <p className="text-sm font-semibold text-primary"> Question {currentQuestionIndex + 1} of {flatQuestions.length} </p>
+                        <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
                         <div className="flex items-center gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
                                 <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>
@@ -454,3 +521,5 @@ export default function QuizPage() {
     </div>
   );
 }
+
+    
