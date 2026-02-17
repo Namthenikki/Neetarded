@@ -22,6 +22,7 @@ interface AggregatedChapter {
     attemptQuizIds: Set<string>;
     totalAttemptedQuestions: number;
     totalCorrectQuestions: number;
+    totalAvailableQuestions: number;
     strength: number;
     lastAttemptedAt: Date;
     sectionName: string; // for flattened list
@@ -130,6 +131,7 @@ export default function AuraPage() {
                             attemptQuizIds: new Set<string>(),
                             totalAttemptedQuestions: 0,
                             totalCorrectQuestions: 0,
+                            totalAvailableQuestions: 0,
                             lastAttemptedAt: new Date(0),
                             strength: 0,
                         } as AggregatedChapter;
@@ -137,9 +139,13 @@ export default function AuraPage() {
 
                     const chapterAgg = aggregation[sectionId].chapters[chapterCode];
                     chapterAgg.attemptQuizIds.add(attempt.quizId);
+                    
                     const attemptedInThisQuiz = chapterData.correct + chapterData.incorrect;
+                    const totalInThisQuiz = attemptedInThisQuiz + chapterData.skipped;
+                    
                     chapterAgg.totalAttemptedQuestions += attemptedInThisQuiz;
                     chapterAgg.totalCorrectQuestions += chapterData.correct;
+                    chapterAgg.totalAvailableQuestions += totalInThisQuiz;
                     
                     if (attempt.completedAt > chapterAgg.lastAttemptedAt) {
                         chapterAgg.lastAttemptedAt = attempt.completedAt;
@@ -151,8 +157,8 @@ export default function AuraPage() {
             const currentDate = new Date();
             for (const section of Object.values(aggregation)) {
                 for (const chapter of Object.values(section.chapters)) {
-                    const baseStrength = chapter.totalAttemptedQuestions > 0
-                        ? (chapter.totalCorrectQuestions / chapter.totalAttemptedQuestions) * 100
+                    const baseStrength = chapter.totalAvailableQuestions > 0
+                        ? (chapter.totalCorrectQuestions / chapter.totalAvailableQuestions) * 100
                         : 0;
 
                     const daysSinceLastAttempt = (currentDate.getTime() - chapter.lastAttemptedAt.getTime()) / (1000 * 3600 * 24);
@@ -287,15 +293,15 @@ export default function AuraPage() {
                     <AccordionItem key={sectionData.id} value={sectionData.id} className="bg-card rounded-xl border">
                         <AccordionTrigger className="p-4 hover:no-underline text-slate-800 w-full">
                            <div className="w-full mr-4">
-                               <div className="flex justify-between items-center w-full">
-                                    <span className="text-xl font-bold">{sectionData.name}</span>
-                                    <Badge variant="secondary">{Object.keys(sectionData.chapters).length} Chapters</Badge>
-                               </div>
-                               <div className="flex items-center gap-3 text-sm mt-2">
-                                    <span className="font-medium text-muted-foreground flex items-center gap-1.5"><TrendingUp size={16}/> Subject Strength</span>
-                                    <Progress value={subjectStrength} className="flex-1 h-2" indicatorClassName={strengthColor} />
-                                    <span className={cn("font-bold text-base", strengthTextColor)}>{subjectStrength.toFixed(0)}%</span>
-                               </div>
+                                <div className="flex justify-between items-center w-full">
+                                     <span className="text-xl font-bold">{sectionData.name}</span>
+                                     <Badge variant="secondary">{Object.keys(sectionData.chapters).length} Chapters</Badge>
+                                </div>
+                                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 text-sm mt-2">
+                                     <span className="font-medium text-muted-foreground flex items-center gap-1.5"><TrendingUp size={16}/> Subject Strength</span>
+                                     <Progress value={subjectStrength} className="h-2" indicatorClassName={strengthColor} />
+                                     <span className={cn("font-bold text-base", strengthTextColor)}>{subjectStrength.toFixed(0)}%</span>
+                                </div>
                            </div>
                         </AccordionTrigger>
                         <AccordionContent className="p-4 pt-0">

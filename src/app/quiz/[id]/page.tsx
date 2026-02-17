@@ -189,11 +189,11 @@ export default function QuizPage() {
             const sectionQuestions = flatQuestions.filter(q => q.sectionId === section.id);
             const sectionCorrect = sectionQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
             const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
-            const attempted = sectionCorrect + sectionIncorrect;
+            
             return {
                 sectionId: section.id, sectionName: section.name, totalQuestions: sectionQuestions.length,
                 correct: sectionCorrect, incorrect: sectionIncorrect,
-                accuracy: attempted > 0 ? (sectionCorrect / attempted) * 100 : 0
+                accuracy: sectionQuestions.length > 0 ? (sectionCorrect / sectionQuestions.length) * 100 : 0
             }
         }),
         deepAnalysis: deepAnalysis,

@@ -466,10 +466,10 @@ export default function ResultPage() {
     const analysis = useMemo(() => {
         if (!attempt || !quiz || flatQuestions.length === 0) return null;
         const maxScore = flatQuestions.length * quiz.settings.positiveMarks;
-        const attemptedCount = attempt.correctAnswers + attempt.incorrectAnswers;
+        
         return {
             score: attempt.score, maxScore,
-            accuracy: attemptedCount > 0 ? (attempt.correctAnswers / attemptedCount) * 100 : 0,
+            accuracy: attempt.totalQuestions > 0 ? (attempt.correctAnswers / attempt.totalQuestions) * 100 : 0,
             timeTaken: { minutes: Math.floor(attempt.timeTaken / 60), seconds: Math.floor(attempt.timeTaken % 60), },
             stats: { correct: attempt.correctAnswers, incorrect: attempt.incorrectAnswers, skipped: attempt.unattempted },
             subjectPerformance: attempt.sectionPerformance.map(p => ({name: p.sectionName, accuracy: p.accuracy, correct: p.correct, incorrect: p.incorrect}))
