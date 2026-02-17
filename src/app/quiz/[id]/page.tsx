@@ -69,58 +69,95 @@ export default function QuizPage() {
   , [flatQuestions]);
   
   useEffect(() => {
-      if (authLoading) {
-          setStatus('loading');
-          return;
-      }
-      if (!user) {
-          setStatus('auth_required');
-          router.replace('/login');
-          return;
-      }
-
-      async function fetchQuiz() {
+    if (authLoading) {
         setStatus('loading');
-        try {
-          const quizDoc = await getDoc(doc(db, "quizzes", quizId));
-          if (quizDoc.exists()) {
-            const quizData = quizDoc.data() as Quiz;
-            if (!quizData.isPublished && user.role !== 'admin' && user.studentId !== quizData.ownerId) {
-              setStatus('private');
-              return;
-            }
-            setQuiz(quizData);
-            setTimeLeft(quizData.settings.duration * 60);
-            setStatus('active');
-          } else {
-            setStatus('not_found');
+        return;
+    }
+    if (!user) {
+        setStatus('auth_required');
+        router.replace('/login');
+        return;
+    }
+
+    async function fetchQuizAndRestore() {
+      setStatus('loading');
+      try {
+        const quizDoc = await getDoc(doc(db, "quizzes", quizId));
+        if (quizDoc.exists()) {
+          const quizData = quizDoc.data() as Quiz;
+          if (!quizData.isPublished && user.role !== 'admin' && user.studentId !== quizData.ownerId) {
+            setStatus('private');
+            return;
           }
-        } catch (error) {
-          console.error("Error fetching quiz:", error);
+          setQuiz(quizData);
+
+          const storageKey = `quiz_progress_${user.studentId}_${quizId}`;
+          const savedProgressJSON = localStorage.getItem(storageKey);
+
+          if (savedProgressJSON) {
+              try {
+                  const savedProgress = JSON.parse(savedProgressJSON);
+                  console.log("Restoring quiz progress from localStorage...");
+                  setAnswers(savedProgress.answers || {});
+                  setTimeLeft(savedProgress.timeLeft > 0 ? savedProgress.timeLeft : quizData.settings.duration * 60);
+                  setCurrentQuestionIndex(savedProgress.currentQuestionIndex || 0);
+                  setVisited(new Set(savedProgress.visited || []));
+                  setStarredQuestions(new Set(savedProgress.starred || []));
+                  setFlaggedQuestions(new Set(savedProgress.flagged || []));
+              } catch (e) {
+                  console.error("Failed to parse saved progress, starting fresh.", e);
+                  localStorage.removeItem(storageKey);
+                  setTimeLeft(quizData.settings.duration * 60);
+              }
+          } else {
+              console.log("No saved progress found. Starting fresh and fetching from DB.");
+              setTimeLeft(quizData.settings.duration * 60);
+              
+              const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
+                  const q = query(
+                      collection(db, collectionName),
+                      where("studentId", "==", user.studentId),
+                      where("quizId", "==", quizId)
+                  );
+                  const snapshot = await getDocs(q);
+                  const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
+                  setter(questionNumbers);
+              };
+
+              await Promise.all([
+                fetchStatus('starred_questions', setStarredQuestions),
+                fetchStatus('flagged_questions', setFlaggedQuestions)
+              ]);
+          }
+          
+          setStatus('active');
+        } else {
           setStatus('not_found');
         }
+      } catch (error) {
+        console.error("Error fetching quiz:", error);
+        setStatus('not_found');
       }
-      fetchQuiz();
+    }
+    fetchQuizAndRestore();
   }, [quizId, user, authLoading, router]);
 
+  // Save progress to localStorage
   useEffect(() => {
-    if (!user || !quizId || status !== 'active') return;
+    if (status !== 'active' || !user || !quizId || !quiz) return;
 
-    const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
-        const q = query(
-            collection(db, collectionName),
-            where("studentId", "==", user.studentId),
-            where("quizId", "==", quizId)
-        );
-        const snapshot = await getDocs(q);
-        const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
-        setter(questionNumbers);
+    const progress = {
+      answers,
+      timeLeft,
+      currentQuestionIndex,
+      visited: Array.from(visited),
+      starred: Array.from(starredQuestions),
+      flagged: Array.from(flaggedQuestions),
     };
-
-    fetchStatus('starred_questions', setStarredQuestions);
-    fetchStatus('flagged_questions', setFlaggedQuestions);
-
-  }, [user, quizId, status]);
+    
+    localStorage.setItem(`quiz_progress_${user.studentId}_${quizId}`, JSON.stringify(progress));
+    
+  }, [answers, timeLeft, currentQuestionIndex, visited, starredQuestions, flaggedQuestions, user, quizId, status, quiz]);
 
   // Track visited questions
   useEffect(() => {
@@ -143,6 +180,8 @@ export default function QuizPage() {
     setStatus('submitting');
     console.log("Saving attempt for Student ID:", user.studentId);
     
+    const totalAttempted = Object.keys(answers).length;
+    const accuracy = totalAttempted > 0 ? (flatQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length / totalAttempted) * 100 : 0;
     const score = flatQuestions.reduce((acc, q) => {
         const userAnswerId = answers[q.questionNumber];
         if (userAnswerId) {
@@ -156,7 +195,6 @@ export default function QuizPage() {
     const incorrectAnswers = flatQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
     const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
-    // Deep Analysis Calculation
     const deepAnalysis: any = {
       subjects: {},
       chapters: {}
@@ -168,11 +206,9 @@ export default function QuizPage() {
       const chapterCode = q.chapterBinaryCode;
       const chapterName = q.chapterName;
 
-      // Initialize subject if not present
       if (!deepAnalysis.subjects[sectionId]) {
         deepAnalysis.subjects[sectionId] = { name: sectionName, score: 0, correct: 0, incorrect: 0, skipped: 0 };
       }
-      // Initialize chapter if not present
       if (!deepAnalysis.chapters[chapterCode]) {
         deepAnalysis.chapters[chapterCode] = { subject: sectionName, name: chapterName, correct: 0, incorrect: 0, skipped: 0 };
       }
@@ -180,16 +216,13 @@ export default function QuizPage() {
       const userAnswerId = answers[q.questionNumber];
 
       if (!userAnswerId) {
-        // Skipped
         deepAnalysis.subjects[sectionId].skipped++;
         deepAnalysis.chapters[chapterCode].skipped++;
       } else if (userAnswerId === q.correctOptionId) {
-        // Correct
         deepAnalysis.subjects[sectionId].correct++;
         deepAnalysis.subjects[sectionId].score += quiz.settings.positiveMarks;
         deepAnalysis.chapters[chapterCode].correct++;
       } else {
-        // Incorrect
         deepAnalysis.subjects[sectionId].incorrect++;
         deepAnalysis.subjects[sectionId].score += quiz.settings.negativeMarks;
         deepAnalysis.chapters[chapterCode].incorrect++;
@@ -199,7 +232,7 @@ export default function QuizPage() {
     const attemptData = {
         quizId: quiz.id,
         quizTitle: quiz.title,
-        userId: user.studentId, // Legacy
+        userId: user.studentId,
         studentId: user.studentId, 
         studentName: user.name, 
         isGuest: false,
@@ -213,14 +246,17 @@ export default function QuizPage() {
             const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
             const attemptedInThisSection = sectionCorrect + sectionIncorrect;
             const totalInThisSection = sectionQuestions.length;
-            const accuracy = totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0;
+            const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
+            const baseAccuracy = attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0;
+            const finalAccuracy = baseAccuracy * confidenceFactor;
+
             return {
                 sectionId: section.id, 
                 sectionName: section.name, 
                 totalQuestions: totalInThisSection,
                 correct: sectionCorrect, 
                 incorrect: sectionIncorrect,
-                accuracy: accuracy
+                accuracy: finalAccuracy
             }
         }),
         deepAnalysis: deepAnalysis,
@@ -228,13 +264,9 @@ export default function QuizPage() {
 
     try {
         const batch = writeBatch(db);
-
-        // 1. Save the new attempt
         const attemptRef = doc(collection(db, "attempts"));
-        console.log("Attempt Document ID:", attemptRef.id);
         batch.set(attemptRef, attemptData);
 
-        // 2. Check for and update any pending assignment
         const assignmentQuery = query(
             collection(db, "assigned_quizzes"),
             where("quizId", "==", quiz.id),
@@ -245,10 +277,11 @@ export default function QuizPage() {
         if (!assignmentSnapshot.empty) {
             const assignmentDocRef = assignmentSnapshot.docs[0].ref;
             batch.update(assignmentDocRef, { status: 'completed' });
-            console.log("Marked assignment as completed:", assignmentDocRef.id);
         }
         
         await batch.commit();
+
+        localStorage.removeItem(`quiz_progress_${user.studentId}_${quizId}`);
 
         setStatus('completed');
         router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
@@ -258,7 +291,7 @@ export default function QuizPage() {
         alert("Failed to submit your attempt. Please try again.");
         setStatus('active');
     }
-  }, [status, quiz, user, answers, flatQuestions, router, timeLeft]);
+  }, [status, quiz, user, answers, flatQuestions, router, timeLeft, quizId]);
 
   useEffect(() => {
     if (status !== 'active') return;
@@ -282,7 +315,7 @@ export default function QuizPage() {
 
   const handlePrev = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
     }
   };
   
@@ -332,7 +365,7 @@ export default function QuizPage() {
                   sectionId: question.sectionId,
                   sectionName: question.sectionName,
                   chapterBinaryCode: question.chapterBinaryCode,
-                  chapterName: question.chapterName,
+                  chapterName: chapter.name,
                   questionData: {
                       text: question.text,
                       options: question.options,
