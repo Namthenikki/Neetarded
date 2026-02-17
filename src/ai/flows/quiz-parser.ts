@@ -73,7 +73,8 @@ You will be given the raw questions, the raw answer key, and the target JSON str
 
 1.  **Parse Questions**: Read the raw questions text. Each question starts with a number (e.g., "1.", "2.").
 2.  **Extract IDs**:
-    *   Some questions will be prefixed with a section ID and a chapter binary code (e.g., \`#PHY #000001 1. A ball is thrown...\`).
+    *   Some questions will be prefixed with a section ID and a chapter binary code. The format can be space-separated (e.g., \`#PHY #000001 1. ...\`) or hyphen-separated (e.g., \`#3C0-001001 1. ...\`).
+    *   For the hyphenated format like \`#3C0-001001\`, the sectionId is \`3C0\` and the chapterBinaryCode is \`001001\`. You must parse both formats correctly.
     *   Use these markers to get the \`sectionId\` and \`chapterBinaryCode\` for each question.
     *   If a question has no markers, it continues to belong to the previously specified chapter/section. The markers only appear when the chapter changes.
     *   If a question has markers that do not correspond to any defined section or chapter, assign it to a section with id "GEN" and chapter code "000000".
