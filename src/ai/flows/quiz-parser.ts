@@ -5,6 +5,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import type { QuizStructure, Section, Chapter, Question } from '@/types/quiz';
+import { QUIZ_SUBJECTS } from '@/lib/quiz-data';
 
 
 // The input schema remains the same, as we still need to provide this data to the flow.
@@ -67,8 +68,6 @@ const quizParserPrompt = ai.definePrompt({
   prompt: `You are an expert data parser for a competitive exam preparation app.
 Your task is to convert raw text for questions and answers into a structured JSON format.
 
-You will be given the raw questions, the raw answer key, and the target JSON structure of the quiz.
-
 **Instructions:**
 
 1.  **Parse Questions**: Read the raw questions text. Each question starts with a number (e.g., "1.", "2.").
@@ -121,10 +120,18 @@ const quizParserFlow = ai.defineFlow(
         throw new Error('AI parsing failed to produce a valid question list.');
     }
 
-    // 2. Group the flat list into the nested structure (the "re-grouping logic")
+    // 2. Build a master lookup map for ALL possible chapters
+    const masterChapterNameMap: Map<string, string> = new Map();
+    QUIZ_SUBJECTS.forEach(subject => {
+        subject.chapters.forEach(chapter => {
+            masterChapterNameMap.set(`${subject.id}__${chapter.binaryCode}`, chapter.name);
+        });
+    });
+
+    // 3. Group the flat list into the nested structure (the "re-grouping logic")
     const finalStructure: QuizStructure = JSON.parse(JSON.stringify(input.structure)); // Deep copy to start
 
-    // Create a map for quick lookup of chapters
+    // Create a map for quick lookup of chapters IN THE CURRENT STRUCTURE
     const chapterMap: Map<string, Chapter> = new Map();
     finalStructure.forEach(section => {
         section.chapters.forEach(chapter => {
@@ -156,16 +163,20 @@ const quizParserFlow = ai.defineFlow(
         if (!chapter) {
             let section = sectionMap.get(q.sectionId);
             if (!section) {
+                const subjectData = QUIZ_SUBJECTS.find(s => s.id === q.sectionId);
                 section = {
                     id: q.sectionId,
-                    name: `Section ${q.sectionId}`, // Default name if section is new
+                    name: subjectData ? subjectData.name : `Section ${q.sectionId}`,
                     chapters: []
                 };
                 sectionMap.set(q.sectionId, section);
                 finalStructure.push(section);
             }
+            
+            const chapterName = masterChapterNameMap.get(mapKey) || `Chapter ${q.chapterBinaryCode}`;
+            
             chapter = {
-                name: `Chapter ${q.chapterBinaryCode}`, // Default name if chapter is new
+                name: chapterName,
                 binaryCode: q.chapterBinaryCode,
                 questions: []
             };
