@@ -220,7 +220,7 @@ export default function QuizPage() {
                 totalQuestions: totalInThisSection,
                 correct: sectionCorrect, 
                 incorrect: sectionIncorrect,
-                accuracy: attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0
+                accuracy: totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0
             }
         }),
         deepAnalysis: deepAnalysis,
@@ -469,8 +469,11 @@ export default function QuizPage() {
               >
                 <Card className="bg-transparent border-0 shadow-none rounded-2xl">
                   <CardContent className="p-0">
-                    <div className="flex justify-between items-center mb-4">
-                        <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
+                            <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
+                        </div>
                         <div className="flex items-center gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
                                 <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>

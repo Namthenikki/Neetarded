@@ -120,31 +120,27 @@ const quizParserFlow = ai.defineFlow(
         throw new Error('AI parsing failed to produce a valid question list.');
     }
 
-    // 2. Build a master lookup map for ALL possible chapters
-    const masterChapterNameMap: Map<string, string> = new Map();
+    // 2. Build a master lookup map for ALL possible chapters from the canonical source
+    const masterChapterMap: Map<string, { name: string; subjectId: string }> = new Map();
     QUIZ_SUBJECTS.forEach(subject => {
         subject.chapters.forEach(chapter => {
-            masterChapterNameMap.set(`${subject.id}__${chapter.binaryCode}`, chapter.name);
+            const mapKey = `${subject.id}__${chapter.binaryCode}`;
+            masterChapterMap.set(mapKey, { name: chapter.name, subjectId: subject.id });
         });
     });
 
     // 3. Group the flat list into the nested structure (the "re-grouping logic")
     const finalStructure: QuizStructure = JSON.parse(JSON.stringify(input.structure)); // Deep copy to start
 
-    // Create a map for quick lookup of chapters IN THE CURRENT STRUCTURE
-    const chapterMap: Map<string, Chapter> = new Map();
+    // Create maps for quick lookups of existing sections and chapters
+    const sectionMap = new Map<string, Section>(finalStructure.map(s => [s.id, s]));
+    const chapterMap = new Map<string, Chapter>();
     finalStructure.forEach(section => {
         section.chapters.forEach(chapter => {
             chapter.questions = []; // Ensure questions array is initialized and empty
             const mapKey = `${section.id}__${chapter.binaryCode}`;
             chapterMap.set(mapKey, chapter);
         });
-    });
-
-    // A separate map for sections to add chapters to if they don't exist
-    const sectionMap: Map<string, Section> = new Map();
-    finalStructure.forEach(section => {
-        sectionMap.set(section.id, section);
     });
 
     // Process each question from the AI's flat output
@@ -160,7 +156,9 @@ const quizParserFlow = ai.defineFlow(
         const mapKey = `${q.sectionId}__${q.chapterBinaryCode}`;
         let chapter = chapterMap.get(mapKey);
 
+        // If the chapter doesn't exist in the admin-defined structure, create it dynamically
         if (!chapter) {
+            // Find its parent section. If it doesn't exist, create it too.
             let section = sectionMap.get(q.sectionId);
             if (!section) {
                 const subjectData = QUIZ_SUBJECTS.find(s => s.id === q.sectionId);
@@ -170,18 +168,20 @@ const quizParserFlow = ai.defineFlow(
                     chapters: []
                 };
                 sectionMap.set(q.sectionId, section);
-                finalStructure.push(section);
+                finalStructure.push(section); // Add new section to the main structure
             }
             
-            const chapterName = masterChapterNameMap.get(mapKey) || `Chapter ${q.chapterBinaryCode}`;
+            // Look up the correct chapter name from our master list
+            const masterChapterData = masterChapterMap.get(mapKey);
             
             chapter = {
-                name: chapterName,
+                name: masterChapterData ? masterChapterData.name : `Chapter ${q.chapterBinaryCode}`,
                 binaryCode: q.chapterBinaryCode,
                 questions: []
             };
-            section.chapters.push(chapter);
-            chapterMap.set(mapKey, chapter);
+            
+            section.chapters.push(chapter); // Add the new chapter to its section
+            chapterMap.set(mapKey, chapter); // Add to map for future lookups
         }
         
         chapter.questions?.push(questionData);
