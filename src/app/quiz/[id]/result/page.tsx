@@ -467,12 +467,22 @@ export default function ResultPage() {
         if (!attempt || !quiz || flatQuestions.length === 0) return null;
         const maxScore = flatQuestions.length * quiz.settings.positiveMarks;
         
+        const totalAttempted = attempt.correctAnswers + attempt.incorrectAnswers;
+        const baseAccuracy = totalAttempted > 0 ? (attempt.correctAnswers / totalAttempted) * 100 : 0;
+        const confidenceFactor = attempt.totalQuestions > 0 ? (totalAttempted / attempt.totalQuestions) : 0;
+        const finalPerformanceScore = baseAccuracy * confidenceFactor;
+
         return {
             score: attempt.score, maxScore,
-            accuracy: attempt.totalQuestions > 0 ? (attempt.correctAnswers / attempt.totalQuestions) * 100 : 0,
+            accuracy: finalPerformanceScore,
             timeTaken: { minutes: Math.floor(attempt.timeTaken / 60), seconds: Math.floor(attempt.timeTaken % 60), },
             stats: { correct: attempt.correctAnswers, incorrect: attempt.incorrectAnswers, skipped: attempt.unattempted },
-            subjectPerformance: attempt.sectionPerformance.map(p => ({name: p.sectionName, accuracy: p.accuracy, correct: p.correct, incorrect: p.incorrect}))
+            subjectPerformance: attempt.sectionPerformance.map(p => ({
+                name: p.sectionName,
+                accuracy: p.accuracy,
+                correct: p.correct,
+                incorrect: p.incorrect
+            }))
         };
     }, [attempt, quiz, flatQuestions]);
     

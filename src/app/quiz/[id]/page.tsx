@@ -213,14 +213,14 @@ export default function QuizPage() {
             const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
             const attemptedInThisSection = sectionCorrect + sectionIncorrect;
             const totalInThisSection = sectionQuestions.length;
-
+            const accuracy = totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0;
             return {
                 sectionId: section.id, 
                 sectionName: section.name, 
                 totalQuestions: totalInThisSection,
                 correct: sectionCorrect, 
                 incorrect: sectionIncorrect,
-                accuracy: totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0
+                accuracy: accuracy
             }
         }),
         deepAnalysis: deepAnalysis,
@@ -543,5 +543,3 @@ export default function QuizPage() {
     </div>
   );
 }
-
-    
