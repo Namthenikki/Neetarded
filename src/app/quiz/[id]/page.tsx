@@ -46,6 +46,7 @@ export default function QuizPage() {
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [visited, setVisited] = useState<Set<number>>(new Set());
 
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
@@ -120,6 +121,21 @@ export default function QuizPage() {
     fetchStatus('flagged_questions', setFlaggedQuestions);
 
   }, [user, quizId, status]);
+
+  // Track visited questions
+  useEffect(() => {
+    if (status === 'active' && flatQuestions.length > 0) {
+        const currentQNumber = flatQuestions[currentQuestionIndex].questionNumber;
+        setVisited(prevVisited => {
+            if (prevVisited.has(currentQNumber)) {
+                return prevVisited;
+            }
+            const newVisited = new Set(prevVisited);
+            newVisited.add(currentQNumber);
+            return newVisited;
+        });
+    }
+  }, [currentQuestionIndex, flatQuestions, status]);
 
 
   const handleSubmit = useCallback(async () => {
@@ -204,7 +220,7 @@ export default function QuizPage() {
                 totalQuestions: totalInThisSection,
                 correct: sectionCorrect, 
                 incorrect: sectionIncorrect,
-                accuracy: totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0
+                accuracy: attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0
             }
         }),
         deepAnalysis: deepAnalysis,
@@ -392,7 +408,7 @@ export default function QuizPage() {
                             <SheetHeader className="p-4 border-b">
                                 <SheetTitle>Question Palette</SheetTitle>
                                 <SheetDescription>
-                                    Answered: {Object.keys(answers).length} &bull; Skipped: {flatQuestions.length - Object.keys(answers).length}
+                                    Answered: {Object.keys(answers).length} &bull; Unanswered: {flatQuestions.length - Object.keys(answers).length}
                                 </SheetDescription>
                             </SheetHeader>
                             <div className="py-4 px-4 space-y-6 overflow-y-auto h-[calc(100vh-8rem)]">
@@ -405,6 +421,9 @@ export default function QuizPage() {
                                                 .map(q => {
                                                     const isAnswered = answers.hasOwnProperty(q.questionNumber);
                                                     const isCurrent = q.questionNumber === currentQuestion.questionNumber;
+                                                    const isVisited = visited.has(q.questionNumber);
+                                                    const isSkipped = isVisited && !isAnswered;
+
                                                     return (
                                                         <Button
                                                             key={q.questionNumber}
@@ -412,8 +431,8 @@ export default function QuizPage() {
                                                             variant="outline"
                                                             size="sm"
                                                             className={cn("h-9 w-9 p-0 font-bold text-xs", {
-                                                                "bg-green-500/20 border-green-500/50 text-green-800 hover:bg-green-500/30 dark:text-green-300": isAnswered,
-                                                                "bg-muted border-dashed": !isAnswered,
+                                                                "bg-green-500/20 border-green-500/50 text-green-800 hover:bg-green-500/30": isAnswered,
+                                                                "bg-red-500/20 border-red-500/50 text-red-800 hover:bg-red-500/30": isSkipped && !isCurrent,
                                                                 "ring-2 ring-primary ring-offset-2": isCurrent
                                                             })}
                                                         >
