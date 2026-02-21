@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -145,8 +146,7 @@ export default function QuizStatsPage() {
             <TableBody>
               {attempts.length > 0 ? (
                 attempts.map((attempt, index) => {
-                  const attemptedCount = attempt.correctAnswers + attempt.incorrectAnswers;
-                  const accuracy = attemptedCount > 0 ? (attempt.correctAnswers / attemptedCount) * 100 : 0;
+                  const accuracy = attempt.totalQuestions > 0 ? (attempt.correctAnswers / attempt.totalQuestions) * 100 : 0;
                   const time = `${Math.floor(attempt.timeTaken / 60)}m ${attempt.timeTaken % 60}s`;
 
                   return (

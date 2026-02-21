@@ -67,21 +67,21 @@ const ScoreHistoryChart = ({ data }: { data: QuizAttempt[] }) => {
 
 const AggregateSectionChart = ({ data }: { data: QuizAttempt[] }) => {
     const chartData = useMemo(() => {
-        const sections: { [key: string]: { name: string, correct: number, incorrect: number } } = {};
+        const sections: { [key: string]: { name: string, correct: number, incorrect: number, totalQuestions: number } } = {};
         data.forEach(attempt => {
             attempt.sectionPerformance.forEach(sec => {
                 if (!sections[sec.sectionId]) {
-                    sections[sec.sectionId] = { name: sec.sectionName, correct: 0, incorrect: 0 };
+                    sections[sec.sectionId] = { name: sec.sectionName, correct: 0, incorrect: 0, totalQuestions: 0 };
                 }
                 sections[sec.sectionId].correct += sec.correct;
                 sections[sec.sectionId].incorrect += sec.incorrect;
+                sections[sec.sectionId].totalQuestions += sec.totalQuestions;
             });
         });
         return Object.values(sections).map(s => {
-            const total = s.correct + s.incorrect;
             return {
                 name: s.name,
-                accuracy: total > 0 ? (s.correct / total) * 100 : 0,
+                accuracy: s.totalQuestions > 0 ? (s.correct / s.totalQuestions) * 100 : 0,
                 correct: s.correct,
                 incorrect: s.incorrect
             }
@@ -232,8 +232,7 @@ export default function StudentResultsPage() {
             </TableHeader>
             <TableBody>
               {attempts.map((attempt) => {
-                  const attemptedCount = attempt.correctAnswers + attempt.incorrectAnswers;
-                  const accuracy = attemptedCount > 0 ? (attempt.correctAnswers / attemptedCount) * 100 : 0;
+                  const accuracy = attempt.totalQuestions > 0 ? (attempt.correctAnswers / attempt.totalQuestions) * 100 : 0;
                   return (
                     <TableRow key={attempt.id}>
                       <TableCell className="font-medium">{attempt.quizTitle}</TableCell>

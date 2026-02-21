@@ -176,8 +176,7 @@ export default function DashboardPage() {
             <TableBody>
               {attempts.length > 0 ? (
                 attempts.map((attempt) => {
-                  const attemptedCount = attempt.correctAnswers + attempt.incorrectAnswers;
-                  const accuracy = attemptedCount > 0 ? (attempt.correctAnswers / attemptedCount) * 100 : 0;
+                  const accuracy = attempt.totalQuestions > 0 ? (attempt.correctAnswers / attempt.totalQuestions) * 100 : 0;
                   return (
                     <TableRow key={attempt.id} className="cursor-pointer hover:bg-slate-50" onClick={() => router.push(`/quiz/${attempt.quizId}/result?attemptId=${attempt.id}`)}>
                       <TableCell className="font-medium text-slate-800">{attempt.quizTitle}</TableCell>
