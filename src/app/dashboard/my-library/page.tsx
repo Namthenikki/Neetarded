@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
@@ -44,6 +45,11 @@ const LibraryList = ({ items }: { items: LibraryQuestion[] }) => {
                                     </CardHeader>
                                     <CardContent>
                                         <p className="mb-4 font-serif">{item.questionData.text}</p>
+                                        {item.questionData.imageUrl && (
+                                            <div className="mb-4 rounded-lg overflow-hidden border p-2 bg-background">
+                                                <Image src={item.questionData.imageUrl} alt={`Figure for question ${item.questionData.questionNumber}`} width={400} height={300} className="rounded-md mx-auto object-contain"/>
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
                                             {item.questionData.options.map(opt => (
                                                 <div key={opt.id} className={`w-full text-left p-2 text-sm rounded-md ${opt.id === item.questionData.correctOptionId ? 'bg-green-500/10 border-green-500 border-l-4' : 'bg-background'}`}>

@@ -12,6 +12,7 @@ export interface Question {
   options: { id: string; text: string }[];
   correctOptionId: string;
   explanation?: string;
+  imageUrl?: string;
 }
 
 export interface Chapter {

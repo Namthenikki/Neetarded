@@ -3,6 +3,7 @@
 
 import { useSearchParams, useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -183,6 +184,7 @@ const QuestionReview = ({
                           correctOptionId: question.correctOptionId,
                           explanation: question.explanation || '',
                           questionNumber: question.questionNumber,
+                          imageUrl: question.imageUrl,
                       },
                       addedAt: serverTimestamp(),
                   };
@@ -247,6 +249,11 @@ const QuestionReview = ({
                             </CardHeader>
                             <CardContent>
                                 <p className="mb-4 font-serif whitespace-pre-wrap">{q.text}</p>
+                                {q.imageUrl && (
+                                    <div className="mb-4 rounded-lg overflow-hidden border p-2 bg-background/50">
+                                        <Image src={q.imageUrl} alt={`Figure for question ${q.questionNumber}`} width={400} height={300} className="rounded-md mx-auto object-contain"/>
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     {q.options.map(opt => {
                                         const isCorrectOption = opt.id === q.correctOptionId;

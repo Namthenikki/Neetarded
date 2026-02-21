@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch, setDoc, deleteDoc } from "firebase/firestore";
@@ -365,6 +366,7 @@ export default function QuizPage() {
                       correctOptionId: question.correctOptionId,
                       explanation: question.explanation || '',
                       questionNumber: question.questionNumber,
+                      imageUrl: question.imageUrl,
                   },
                   addedAt: serverTimestamp(),
               };
@@ -510,6 +512,11 @@ export default function QuizPage() {
                         </div>
                     </div>
                     <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed whitespace-pre-wrap">{currentQuestion.text}</p>
+                    {currentQuestion.imageUrl && (
+                        <div className="mt-4 rounded-lg overflow-hidden border p-2 bg-secondary">
+                          <Image src={currentQuestion.imageUrl} alt={`Figure for question ${currentQuestion.questionNumber}`} width={500} height={400} className="rounded-md mx-auto object-contain"/>
+                        </div>
+                    )}
                   </CardContent>
                 </Card>
                 <div className="mt-8 space-y-3">

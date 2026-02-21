@@ -502,7 +502,7 @@ export default function CreateQuizPage() {
           <CardHeader>
             <CardTitle>3. Add Questions</CardTitle>
             <CardDescription>
-              Paste your raw question text and the answer key below. Then click the AI button.
+              Paste your raw question text and the answer key below. To add an image to a question, use the format `[Image: https://your-image-url.com/image.png]` directly within the question text. Then click the AI button.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

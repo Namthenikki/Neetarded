@@ -36,6 +36,7 @@ const FlatQuestionOutputSchema = z.object({
     explanation: z.string().optional().describe("An explanation for the correct answer, if available in the answer key."),
     sectionId: z.string().describe("The 3-character ID of the section this question belongs to (e.g., 'PHY', 'CHE')."),
     chapterBinaryCode: z.string().describe("The 6-digit binary code of the chapter this question belongs to."),
+    imageUrl: z.string().optional().describe("A URL for an image to be displayed with the question, extracted from the question text."),
 });
 
 const AiOutputSchema = z.object({
@@ -77,9 +78,10 @@ Your task is to convert raw text for questions and answers into a structured JSO
     *   Use these markers to get the \`sectionId\` and \`chapterBinaryCode\` for each question.
     *   If a question has no markers, it continues to belong to the previously specified chapter/section. The markers only appear when the chapter changes.
     *   If a question has markers that do not correspond to any defined section or chapter, assign it to a section with id "GEN" and chapter code "000000".
-3.  **Parse Answers**: Read the raw answers text. Match the question number to find its correct answer and explanation.
-4.  **Construct FLAT JSON**: Create a SINGLE FLAT ARRAY of question objects. Each object must conform to the JSON schema.
-5.  **Strict Output**: The final output MUST be a single, valid JSON object that strictly conforms to the output schema. Do not include any other text, explanations, or markdown formatting like \`\`\`json. The output should be just the \`{ "questions": [...] }\` object.
+3.  **Image Handling**: If a question's text contains a tag like \`[Image: URL]\`, you must extract the URL into the \`imageUrl\` field for that question object. Then, you MUST REMOVE the entire \`[Image: URL]\` tag from the final question \`text\` field.
+4.  **Parse Answers**: Read the raw answers text. Match the question number to find its correct answer and explanation.
+5.  **Construct FLAT JSON**: Create a SINGLE FLAT ARRAY of question objects. Each object must conform to the JSON schema.
+6.  **Strict Output**: The final output MUST be a single, valid JSON object that strictly conforms to the output schema. Do not include any other text, explanations, or markdown formatting like \`\`\`json. The output should be just the \`{ "questions": [...] }\` object.
 
 **Input Data:**
 
@@ -150,7 +152,8 @@ const quizParserFlow = ai.defineFlow(
             text: q.text,
             options: q.options,
             correctOptionId: q.correctOptionId,
-            explanation: q.explanation
+            explanation: q.explanation,
+            imageUrl: q.imageUrl
         };
 
         const mapKey = `${q.sectionId}__${q.chapterBinaryCode}`;
