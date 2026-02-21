@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase/config";
 import { doc, getDoc, addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch, setDoc, deleteDoc } from "firebase/firestore";
-import { type Quiz, type Question } from "@/types/quiz";
+import { type Quiz, type Question, type Chapter } from "@/types/quiz";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -181,18 +181,9 @@ export default function QuizPage() {
     console.log("Saving attempt for Student ID:", user.studentId);
     
     const totalAttempted = Object.keys(answers).length;
-    const accuracy = totalAttempted > 0 ? (flatQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length / totalAttempted) * 100 : 0;
-    const score = flatQuestions.reduce((acc, q) => {
-        const userAnswerId = answers[q.questionNumber];
-        if (userAnswerId) {
-            if (userAnswerId === q.correctOptionId) return acc + quiz.settings.positiveMarks;
-            else return acc + quiz.settings.negativeMarks;
-        }
-        return acc;
-    }, 0);
-
     const correctAnswers = flatQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
     const incorrectAnswers = flatQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
+    const score = (correctAnswers * quiz.settings.positiveMarks) + (incorrectAnswers * quiz.settings.negativeMarks);
     const timeTaken = (quiz.settings.duration * 60) - timeLeft;
 
     const deepAnalysis: any = {
@@ -246,8 +237,9 @@ export default function QuizPage() {
             const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
             const attemptedInThisSection = sectionCorrect + sectionIncorrect;
             const totalInThisSection = sectionQuestions.length;
-            const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
+            
             const baseAccuracy = attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0;
+            const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
             const finalAccuracy = baseAccuracy * confidenceFactor;
 
             return {
@@ -315,7 +307,7 @@ export default function QuizPage() {
 
   const handlePrev = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
   
@@ -338,7 +330,8 @@ export default function QuizPage() {
     question: FlatQuestion,
     collectionName: 'starred_questions' | 'flagged_questions',
     stateSet: Set<number>,
-    setter: React.Dispatch<React.SetStateAction<Set<number>>>
+    setter: React.Dispatch<React.SetStateAction<Set<number>>>,
+    chapter: Chapter
   ) => {
       if (!user || isSyncing || !quiz) return;
       setIsSyncing(true);
@@ -508,10 +501,10 @@ export default function QuizPage() {
                             <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions, quiz.structure.flatMap(s => s.chapters).find(c => c.binaryCode === currentQuestion.chapterBinaryCode)!)} disabled={isSyncing}>
                                 <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing}>
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions, quiz.structure.flatMap(s => s.chapters).find(c => c.binaryCode === currentQuestion.chapterBinaryCode)!)} disabled={isSyncing}>
                                 <Star className={cn("h-5 w-5", starredQuestions.has(currentQuestion.questionNumber) && "fill-yellow-400 text-yellow-400")}/>
                             </Button>
                         </div>
