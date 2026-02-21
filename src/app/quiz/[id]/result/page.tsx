@@ -370,8 +370,8 @@ const DeepAnalysis = ({ attempt }: { attempt: QuizAttempt }) => {
                      <h4 className="font-semibold text-lg mb-4">Chapter Weakness Radar</h4>
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                         {chapters.map((chapter: any, index: number) => {
-                            const total = chapter.correct + chapter.incorrect;
-                            const accuracy = total > 0 ? (chapter.correct / total) * 100 : 0;
+                            const totalQuestionsInChapter = chapter.correct + chapter.incorrect + chapter.skipped;
+                            const accuracy = totalQuestionsInChapter > 0 ? (chapter.correct / totalQuestionsInChapter) * 100 : 0;
                             
                             let badgeClass = "border-yellow-500/30 bg-yellow-500/20 text-yellow-500";
                             if (accuracy >= 75) badgeClass = "border-green-500/30 bg-green-500/20 text-green-500";
