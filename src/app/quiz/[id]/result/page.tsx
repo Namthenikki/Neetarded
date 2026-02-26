@@ -184,7 +184,7 @@ const QuestionReview = ({
                           correctOptionId: question.correctOptionId,
                           explanation: question.explanation || '',
                           questionNumber: question.questionNumber,
-                          imageUrl: question.imageUrl,
+                          imageUrl: question.imageUrl || '',
                       },
                       addedAt: serverTimestamp(),
                   };

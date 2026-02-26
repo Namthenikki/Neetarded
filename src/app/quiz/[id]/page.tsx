@@ -365,7 +365,7 @@ export default function QuizPage() {
                       correctOptionId: question.correctOptionId,
                       explanation: question.explanation || '',
                       questionNumber: question.questionNumber,
-                      imageUrl: question.imageUrl,
+                      imageUrl: question.imageUrl || '',
                   },
                   addedAt: serverTimestamp(),
               };
@@ -575,5 +575,3 @@ export default function QuizPage() {
     </div>
   );
 }
-
-    
