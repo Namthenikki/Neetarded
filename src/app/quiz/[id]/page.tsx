@@ -239,9 +239,9 @@ export default function QuizPage() {
             const attemptedInThisSection = sectionCorrect + sectionIncorrect;
             const totalInThisSection = sectionQuestions.length;
             
-            const baseAccuracy = attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0;
+            const baseAccuracy = totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0;
             const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
-            const finalAccuracy = baseAccuracy * confidenceFactor;
+            const finalAccuracy = baseAccuracy;
 
             return {
                 sectionId: section.id, 
@@ -331,8 +331,7 @@ export default function QuizPage() {
     question: FlatQuestion,
     collectionName: 'starred_questions' | 'flagged_questions',
     stateSet: Set<number>,
-    setter: React.Dispatch<React.SetStateAction<Set<number>>>,
-    chapter: Chapter
+    setter: React.Dispatch<React.SetStateAction<Set<number>>>
   ) => {
       if (!user || isSyncing || !quiz) return;
       setIsSyncing(true);
@@ -359,7 +358,7 @@ export default function QuizPage() {
                   sectionId: question.sectionId,
                   sectionName: question.sectionName,
                   chapterBinaryCode: question.chapterBinaryCode,
-                  chapterName: chapter.name,
+                  chapterName: question.chapterName,
                   questionData: {
                       text: question.text,
                       options: question.options,
@@ -503,10 +502,10 @@ export default function QuizPage() {
                             <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions, quiz.structure.flatMap(s => s.chapters).find(c => c.binaryCode === currentQuestion.chapterBinaryCode)!)} disabled={isSyncing}>
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
                                 <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions, quiz.structure.flatMap(s => s.chapters).find(c => c.binaryCode === currentQuestion.chapterBinaryCode)!)} disabled={isSyncing}>
+                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing}>
                                 <Star className={cn("h-5 w-5", starredQuestions.has(currentQuestion.questionNumber) && "fill-yellow-400 text-yellow-400")}/>
                             </Button>
                         </div>
@@ -576,3 +575,5 @@ export default function QuizPage() {
     </div>
   );
 }
+
+    
