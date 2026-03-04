@@ -30,9 +30,16 @@ function getAdminApp() {
         privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     };
 
-    return initializeApp({
-        credential: cert(serviceAccount),
-    });
+    try {
+        return initializeApp({
+            credential: cert(serviceAccount),
+        });
+    } catch (error) {
+        console.warn('Failed to parse Firebase credentials (expected during build phase):', error);
+        return initializeApp({
+            projectId: 'demo-project'
+        });
+    }
 }
 
 const adminApp = getAdminApp();
