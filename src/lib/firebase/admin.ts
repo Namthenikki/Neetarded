@@ -16,6 +16,14 @@ function getAdminApp() {
         return getApps()[0];
     }
 
+    if (!process.env.FIREBASE_PROJECT_ID) {
+        // Fallback for Next.js build phase if env vars aren't loaded
+        console.warn('FIREBASE_PROJECT_ID is missing. Using demo project for build phase.');
+        return initializeApp({
+            projectId: 'demo-project'
+        });
+    }
+
     const serviceAccount: ServiceAccount = {
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
