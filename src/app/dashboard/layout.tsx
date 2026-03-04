@@ -2,6 +2,7 @@
 
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/hooks/use-auth";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
@@ -13,6 +14,10 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  // Initialize push notifications for students
+  // Temporarily disabled due to invalid VAPID key
+  // usePushNotifications();
 
   useEffect(() => {
     if (!loading && !user) {

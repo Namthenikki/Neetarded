@@ -42,83 +42,83 @@ import {
 
 // A small sub-component to manage adding chapters to a section
 const ChapterManager = ({ section, sectionIndex, onChapterUpdate }: { section: any, sectionIndex: number, onChapterUpdate: (sectionIndex: number, newChapters: Chapter[]) => void }) => {
-    const [selectedChapterCode, setSelectedChapterCode] = useState<string>('');
-    const subjectData = getSubjectById(section.id);
-    
-    const availableChapters = useMemo(() => {
-        if (!subjectData) return [];
-        const existingChapterCodes = new Set(section.chapters.map((c: Chapter) => c.binaryCode));
-        return subjectData.chapters.filter(c => !existingChapterCodes.has(c.binaryCode));
-    }, [subjectData, section.chapters]);
+  const [selectedChapterCode, setSelectedChapterCode] = useState<string>('');
+  const subjectData = getSubjectById(section.id);
 
-    const handleAddChapter = () => {
-        if (!selectedChapterCode) return;
-        const chapterToAdd = subjectData?.chapters.find(c => c.binaryCode === selectedChapterCode);
-        if (chapterToAdd) {
-            const newChapter: Chapter = {
-                name: chapterToAdd.name,
-                binaryCode: chapterToAdd.binaryCode,
-                questions: [],
-            }
-            onChapterUpdate(sectionIndex, [...section.chapters, newChapter]);
-        }
-        setSelectedChapterCode(''); // Reset dropdown
+  const availableChapters = useMemo(() => {
+    if (!subjectData) return [];
+    const existingChapterCodes = new Set(section.chapters.map((c: Chapter) => c.binaryCode));
+    return subjectData.chapters.filter(c => !existingChapterCodes.has(c.binaryCode));
+  }, [subjectData, section.chapters]);
+
+  const handleAddChapter = () => {
+    if (!selectedChapterCode) return;
+    const chapterToAdd = subjectData?.chapters.find(c => c.binaryCode === selectedChapterCode);
+    if (chapterToAdd) {
+      const newChapter: Chapter = {
+        name: chapterToAdd.name,
+        binaryCode: chapterToAdd.binaryCode,
+        questions: [],
+      }
+      onChapterUpdate(sectionIndex, [...section.chapters, newChapter]);
     }
+    setSelectedChapterCode(''); // Reset dropdown
+  }
 
-    const handleRemoveChapter = (chapterIndex: number) => {
-        const newChapters = section.chapters.filter((_: any, cIndex: number) => cIndex !== chapterIndex);
-        onChapterUpdate(sectionIndex, newChapters);
-    }
-    
-    return (
-        <CardContent className="p-4">
-            {section.chapters.length > 0 ? (
-                <div className="space-y-3">
-                <Label className="text-xs text-muted-foreground">Chapters</Label>
-                {section.chapters.map((chapter: Chapter, chapterIndex: number) => (
-                    <div key={chapter.binaryCode} className="flex items-center gap-2 p-2 rounded-lg bg-background">
-                        <div className="flex-grow">
-                            <p className="font-medium">{chapter.name}</p>
-                            <code className="text-sm text-muted-foreground">{section.id}-{chapter.binaryCode}</code>
-                        </div>
-                        <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveChapter(chapterIndex)}
-                        >
-                        <Trash2 className="h-4 w-4 text-destructive/70" />
-                        </Button>
-                    </div>
-                ))}
-                </div>
-            ) : (
-                <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet. Add one below.</p>
-            )}
+  const handleRemoveChapter = (chapterIndex: number) => {
+    const newChapters = section.chapters.filter((_: any, cIndex: number) => cIndex !== chapterIndex);
+    onChapterUpdate(sectionIndex, newChapters);
+  }
 
-            {availableChapters.length > 0 && (
-                <div className="flex items-center gap-2 mt-4 pt-4 border-t">
-                    <Select value={selectedChapterCode} onValueChange={setSelectedChapterCode}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a chapter..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {availableChapters.map(chapter => (
-                                <SelectItem key={chapter.binaryCode} value={chapter.binaryCode}>{chapter.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddChapter}
-                        disabled={!selectedChapterCode}
-                    >
-                        <Plus className="mr-2 h-4 w-4" /> Add
-                    </Button>
-                </div>
-            )}
-        </CardContent>
-    )
+  return (
+    <CardContent className="p-4">
+      {section.chapters.length > 0 ? (
+        <div className="space-y-3">
+          <Label className="text-xs text-muted-foreground">Chapters</Label>
+          {section.chapters.map((chapter: Chapter, chapterIndex: number) => (
+            <div key={chapter.binaryCode} className="flex items-center gap-2 p-2 rounded-lg bg-background">
+              <div className="flex-grow">
+                <p className="font-medium">{chapter.name}</p>
+                <code className="text-sm text-muted-foreground">{section.id}-{chapter.binaryCode}</code>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleRemoveChapter(chapterIndex)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive/70" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-muted-foreground">No chapters yet. Add one below.</p>
+      )}
+
+      {availableChapters.length > 0 && (
+        <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+          <Select value={selectedChapterCode} onValueChange={setSelectedChapterCode}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a chapter..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableChapters.map(chapter => (
+                <SelectItem key={chapter.binaryCode} value={chapter.binaryCode}>{chapter.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAddChapter}
+            disabled={!selectedChapterCode}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add
+          </Button>
+        </div>
+      )}
+    </CardContent>
+  )
 }
 
 
@@ -137,7 +137,7 @@ export default function CreateQuizPage() {
   const [structure, setStructure] = useState<QuizStructure>([]);
   const [questions, setQuestions] = useState("");
   const [answers, setAnswers] = useState("");
-  
+
   // State for UI/flow
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPorting, setIsPorting] = useState(false);
@@ -151,14 +151,14 @@ export default function CreateQuizPage() {
 
 
   const hasQuestions = useMemo(() => {
-    return structure.some(section => 
+    return structure.some(section =>
       section.chapters.some(chapter => chapter.questions && chapter.questions.length > 0)
     );
   }, [structure]);
 
   const availableSubjects = useMemo(() => {
-      const existingSubjectIds = new Set(structure.map(s => s.id));
-      return QUIZ_SUBJECTS.filter(s => !existingSubjectIds.has(s.id));
+    const existingSubjectIds = new Set(structure.map(s => s.id));
+    return QUIZ_SUBJECTS.filter(s => !existingSubjectIds.has(s.id));
   }, [structure]);
 
   const handleAddSection = () => {
@@ -167,9 +167,9 @@ export default function CreateQuizPage() {
     if (!subjectData) return;
 
     const newSection = {
-        id: subjectData.id,
-        name: subjectData.name,
-        chapters: []
+      id: subjectData.id,
+      name: subjectData.name,
+      chapters: []
     };
     setStructure([...structure, newSection]);
     setSubjectToAdd(''); // Reset dropdown
@@ -180,17 +180,17 @@ export default function CreateQuizPage() {
   };
 
   const handleChapterUpdate = (sectionIndex: number, newChapters: Chapter[]) => {
-      const newStructure = [...structure];
-      newStructure[sectionIndex].chapters = newChapters;
-      setStructure(newStructure);
+    const newStructure = [...structure];
+    newStructure[sectionIndex].chapters = newChapters;
+    setStructure(newStructure);
   }
 
   const validateStructure = () => {
     if (!title.trim()) {
-        toast({ variant: "destructive", title: `Missing Title`, description: "Please provide a title for your quiz."});
-        return false;
+      toast({ variant: "destructive", title: `Missing Title`, description: "Please provide a title for your quiz." });
+      return false;
     }
-     if (structure.length === 0) {
+    if (structure.length === 0) {
       toast({
         variant: "destructive",
         title: "Structure Not Defined",
@@ -253,12 +253,12 @@ export default function CreateQuizPage() {
       setIsAnalyzing(false);
     }
   };
-  
+
   const handleFinalize = async () => {
     if (!validateStructure()) return;
     if (!hasQuestions) {
-        toast({ variant: 'destructive', title: "No Questions", description: "The quiz must have at least one question parsed by the AI." });
-        return;
+      toast({ variant: 'destructive', title: "No Questions", description: "The quiz must have at least one question parsed by the AI." });
+      return;
     }
     if (!user) {
       toast({ variant: 'destructive', title: "Authentication Error", description: "You must be logged in to save a quiz." });
@@ -280,12 +280,12 @@ export default function CreateQuizPage() {
         createdAt: serverTimestamp(),
         ownerId: user.studentId,
       };
-      
+
       console.log("Attempting to save to 'quizzes' collection...", quizPayload);
 
       await new Promise(res => setTimeout(res, 500));
       setUploadProgress(50);
-      
+
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Database Connection Timeout. Check your internet or Firebase Rules.")), 5000)
       );
@@ -293,7 +293,7 @@ export default function CreateQuizPage() {
       const docRef = await Promise.race([
         addDoc(collection(db, "quizzes"), quizPayload),
         timeoutPromise
-      ]) as any; 
+      ]) as any;
 
       setDoc(doc(db, "quizzes", docRef.id), { id: docRef.id }, { merge: true });
 
@@ -320,40 +320,60 @@ export default function CreateQuizPage() {
 
   const handleDeploy = async () => {
     if (!quizId || !user || !deployStudentIds.trim()) {
-        toast({ variant: 'destructive', title: 'Missing Info', description: 'Quiz ID or student IDs are missing.' });
-        return;
+      toast({ variant: 'destructive', title: 'Missing Info', description: 'Quiz ID or student IDs are missing.' });
+      return;
     }
     setIsDeploying(true);
     try {
-        const studentIds = deployStudentIds.split(',').map(id => id.trim().toLowerCase()).filter(id => id);
-        const batch = writeBatch(db);
+      const studentIds = deployStudentIds.split(',').map(id => id.trim().toLowerCase()).filter(id => id);
+      const batch = writeBatch(db);
 
-        const quizRef = doc(db, "quizzes", quizId);
-        batch.update(quizRef, { isPublished: true });
+      const quizRef = doc(db, "quizzes", quizId);
+      batch.update(quizRef, { isPublished: true });
 
-        for (const studentId of studentIds) {
-            const assignmentRef = doc(collection(db, "assigned_quizzes"));
-            batch.set(assignmentRef, {
-                quizId: quizId,
-                quizTitle: title,
-                studentId: studentId,
-                assignedAt: serverTimestamp(),
-                status: 'pending',
-                creatorId: user.studentId
-            });
-        }
+      for (const studentId of studentIds) {
+        const assignmentRef = doc(collection(db, "assigned_quizzes"));
+        batch.set(assignmentRef, {
+          quizId: quizId,
+          quizTitle: title,
+          studentId: studentId,
+          assignedAt: serverTimestamp(),
+          status: 'pending',
+          creatorId: user.studentId
+        });
+      }
 
-        await batch.commit();
-        toast({ title: 'Deployment Successful', description: `${studentIds.length} students have been assigned this quiz.` });
-        setShowDeployModal(false);
-        setIsReady(false);
-        router.push('/dashboard/admin');
+      await batch.commit();
+
+      // Send push notifications to all assigned students (fire-and-forget)
+      try {
+        const notifResponse = await fetch('/api/notifications/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quizId: quizId,
+            quizTitle: title,
+            studentIds: studentIds,
+            adminId: user.studentId,
+          }),
+        });
+        const notifResult = await notifResponse.json();
+        console.log('Notification result:', notifResult);
+      } catch (notifError) {
+        // Don't block the deploy flow if notifications fail
+        console.error('Failed to send push notifications:', notifError);
+      }
+
+      toast({ title: 'Deployment Successful', description: `${studentIds.length} students have been assigned this quiz.` });
+      setShowDeployModal(false);
+      setIsReady(false);
+      router.push('/dashboard/admin');
 
     } catch (error: any) {
-        console.error("Deploy error:", error);
-        toast({ variant: 'destructive', title: 'Deployment Failed', description: error.message });
+      console.error("Deploy error:", error);
+      toast({ variant: 'destructive', title: 'Deployment Failed', description: error.message });
     } finally {
-        setIsDeploying(false);
+      setIsDeploying(false);
     }
   };
 
@@ -422,7 +442,7 @@ export default function CreateQuizPage() {
               </div>
               <div>
                 <Label htmlFor="negative-marks">Negative Marks</Label>
-                 <div className="relative flex items-center">
+                <div className="relative flex items-center">
                   <span className="absolute left-3 text-lg text-muted-foreground">-</span>
                   <Input
                     id="negative-marks"
@@ -474,25 +494,25 @@ export default function CreateQuizPage() {
               ))}
             </div>
             {availableSubjects.length > 0 && (
-                <div className="flex items-center gap-2 mt-4 p-4 border-t">
-                    <Select value={subjectToAdd} onValueChange={setSubjectToAdd}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a subject to add..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {availableSubjects.map(subject => (
-                                <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button
-                        variant="outline"
-                        onClick={handleAddSection}
-                        disabled={!subjectToAdd}
-                    >
-                        <BookPlus className="mr-2 h-4 w-4" /> Add Section
-                    </Button>
-                </div>
+              <div className="flex items-center gap-2 mt-4 p-4 border-t">
+                <Select value={subjectToAdd} onValueChange={setSubjectToAdd}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a subject to add..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSubjects.map(subject => (
+                      <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  onClick={handleAddSection}
+                  disabled={!subjectToAdd}
+                >
+                  <BookPlus className="mr-2 h-4 w-4" /> Add Section
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -583,7 +603,7 @@ export default function CreateQuizPage() {
         <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader className="items-center text-center">
             <div className="p-3 bg-green-100 dark:bg-green-900 rounded-full w-fit">
-                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
             <AlertDialogTitle>Quiz Engine Ready</AlertDialogTitle>
             <AlertDialogDescription>
@@ -592,11 +612,11 @@ export default function CreateQuizPage() {
           </AlertDialogHeader>
           <div className="grid grid-cols-2 gap-4 py-4">
             <Button onClick={handleStartProtocol} className="h-auto py-3">
-              <Rocket className="mr-2"/>
+              <Rocket className="mr-2" />
               Start Protocol
             </Button>
             <Button onClick={() => setShowDeployModal(true)} variant="secondary" className="h-auto py-3">
-              <Send className="mr-2"/>
+              <Send className="mr-2" />
               Deploy to Students
             </Button>
           </div>
@@ -618,7 +638,7 @@ export default function CreateQuizPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">
-            <Textarea 
+            <Textarea
               placeholder="e.g. sourav, rahul, priya"
               value={deployStudentIds}
               onChange={(e) => setDeployStudentIds(e.target.value)}
@@ -627,7 +647,7 @@ export default function CreateQuizPage() {
           <AlertDialogFooter>
             <Button variant="outline" onClick={() => setShowDeployModal(false)} disabled={isDeploying}>Cancel</Button>
             <Button onClick={handleDeploy} disabled={isDeploying}>
-              {isDeploying ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send />}
+              {isDeploying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send />}
               Deploy
             </Button>
           </AlertDialogFooter>
@@ -637,4 +657,4 @@ export default function CreateQuizPage() {
     </div>
   );
 }
-    
+

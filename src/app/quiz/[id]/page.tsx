@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
 
 type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
@@ -65,19 +66,19 @@ export default function QuizPage() {
     ).sort((a, b) => a.questionNumber - b.questionNumber);
   }, [quiz]);
 
-  const questionNumberToIndexMap = useMemo(() => 
+  const questionNumberToIndexMap = useMemo(() =>
     new Map(flatQuestions.map((q, index) => [q.questionNumber, index]))
-  , [flatQuestions]);
-  
+    , [flatQuestions]);
+
   useEffect(() => {
     if (authLoading) {
-        setStatus('loading');
-        return;
+      setStatus('loading');
+      return;
     }
     if (!user) {
-        setStatus('auth_required');
-        router.replace('/login');
-        return;
+      setStatus('auth_required');
+      router.replace('/login');
+      return;
     }
 
     async function fetchQuizAndRestore() {
@@ -96,41 +97,41 @@ export default function QuizPage() {
           const savedProgressJSON = localStorage.getItem(storageKey);
 
           if (savedProgressJSON) {
-              try {
-                  const savedProgress = JSON.parse(savedProgressJSON);
-                  console.log("Restoring quiz progress from localStorage...");
-                  setAnswers(savedProgress.answers || {});
-                  setTimeLeft(savedProgress.timeLeft > 0 ? savedProgress.timeLeft : quizData.settings.duration * 60);
-                  setCurrentQuestionIndex(savedProgress.currentQuestionIndex || 0);
-                  setVisited(new Set(savedProgress.visited || []));
-                  setStarredQuestions(new Set(savedProgress.starred || []));
-                  setFlaggedQuestions(new Set(savedProgress.flagged || []));
-              } catch (e) {
-                  console.error("Failed to parse saved progress, starting fresh.", e);
-                  localStorage.removeItem(storageKey);
-                  setTimeLeft(quizData.settings.duration * 60);
-              }
-          } else {
-              console.log("No saved progress found. Starting fresh and fetching from DB.");
+            try {
+              const savedProgress = JSON.parse(savedProgressJSON);
+              console.log("Restoring quiz progress from localStorage...");
+              setAnswers(savedProgress.answers || {});
+              setTimeLeft(savedProgress.timeLeft > 0 ? savedProgress.timeLeft : quizData.settings.duration * 60);
+              setCurrentQuestionIndex(savedProgress.currentQuestionIndex || 0);
+              setVisited(new Set(savedProgress.visited || []));
+              setStarredQuestions(new Set(savedProgress.starred || []));
+              setFlaggedQuestions(new Set(savedProgress.flagged || []));
+            } catch (e) {
+              console.error("Failed to parse saved progress, starting fresh.", e);
+              localStorage.removeItem(storageKey);
               setTimeLeft(quizData.settings.duration * 60);
-              
-              const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
-                  const q = query(
-                      collection(db, collectionName),
-                      where("studentId", "==", user.studentId),
-                      where("quizId", "==", quizId)
-                  );
-                  const snapshot = await getDocs(q);
-                  const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
-                  setter(questionNumbers);
-              };
+            }
+          } else {
+            console.log("No saved progress found. Starting fresh and fetching from DB.");
+            setTimeLeft(quizData.settings.duration * 60);
 
-              await Promise.all([
-                fetchStatus('starred_questions', setStarredQuestions),
-                fetchStatus('flagged_questions', setFlaggedQuestions)
-              ]);
+            const fetchStatus = async (collectionName: string, setter: React.Dispatch<React.SetStateAction<Set<number>>>) => {
+              const q = query(
+                collection(db, collectionName),
+                where("studentId", "==", user.studentId),
+                where("quizId", "==", quizId)
+              );
+              const snapshot = await getDocs(q);
+              const questionNumbers = new Set(snapshot.docs.map(d => d.data().questionNumber));
+              setter(questionNumbers);
+            };
+
+            await Promise.all([
+              fetchStatus('starred_questions', setStarredQuestions),
+              fetchStatus('flagged_questions', setFlaggedQuestions)
+            ]);
           }
-          
+
           setStatus('active');
         } else {
           setStatus('not_found');
@@ -155,23 +156,23 @@ export default function QuizPage() {
       starred: Array.from(starredQuestions),
       flagged: Array.from(flaggedQuestions),
     };
-    
+
     localStorage.setItem(`quiz_progress_${user.studentId}_${quizId}`, JSON.stringify(progress));
-    
+
   }, [answers, timeLeft, currentQuestionIndex, visited, starredQuestions, flaggedQuestions, user, quizId, status, quiz]);
 
   // Track visited questions
   useEffect(() => {
     if (status === 'active' && flatQuestions.length > 0) {
-        const currentQNumber = flatQuestions[currentQuestionIndex].questionNumber;
-        setVisited(prevVisited => {
-            if (prevVisited.has(currentQNumber)) {
-                return prevVisited;
-            }
-            const newVisited = new Set(prevVisited);
-            newVisited.add(currentQNumber);
-            return newVisited;
-        });
+      const currentQNumber = flatQuestions[currentQuestionIndex].questionNumber;
+      setVisited(prevVisited => {
+        if (prevVisited.has(currentQNumber)) {
+          return prevVisited;
+        }
+        const newVisited = new Set(prevVisited);
+        newVisited.add(currentQNumber);
+        return newVisited;
+      });
     }
   }, [currentQuestionIndex, flatQuestions, status]);
 
@@ -180,7 +181,7 @@ export default function QuizPage() {
     if (status !== 'active' || !quiz || !user) return;
     setStatus('submitting');
     console.log("Saving attempt for Student ID:", user.studentId);
-    
+
     const totalAttempted = Object.keys(answers).length;
     const correctAnswers = flatQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
     const incorrectAnswers = flatQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
@@ -222,67 +223,67 @@ export default function QuizPage() {
     });
 
     const attemptData = {
-        quizId: quiz.id,
-        quizTitle: quiz.title,
-        userId: user.studentId,
-        studentId: user.studentId, 
-        studentName: user.name, 
-        isGuest: false,
-        answers, score, correctAnswers, incorrectAnswers,
-        unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
-        totalQuestions: flatQuestions.length, timeTaken,
-        completedAt: serverTimestamp(),
-        sectionPerformance: quiz.structure.map(section => {
-            const sectionQuestions = flatQuestions.filter(q => q.sectionId === section.id);
-            const sectionCorrect = sectionQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
-            const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
-            const attemptedInThisSection = sectionCorrect + sectionIncorrect;
-            const totalInThisSection = sectionQuestions.length;
-            
-            const baseAccuracy = totalInThisSection > 0 ? (sectionCorrect / totalInThisSection) * 100 : 0;
-            const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
-            const finalAccuracy = baseAccuracy;
+      quizId: quiz.id,
+      quizTitle: quiz.title,
+      userId: user.studentId,
+      studentId: user.studentId,
+      studentName: user.name,
+      isGuest: false,
+      answers, score, correctAnswers, incorrectAnswers,
+      unattempted: flatQuestions.length - (correctAnswers + incorrectAnswers),
+      totalQuestions: flatQuestions.length, timeTaken,
+      completedAt: serverTimestamp(),
+      sectionPerformance: quiz.structure.map(section => {
+        const sectionQuestions = flatQuestions.filter(q => q.sectionId === section.id);
+        const sectionCorrect = sectionQuestions.filter(q => answers[q.questionNumber] === q.correctOptionId).length;
+        const sectionIncorrect = sectionQuestions.filter(q => answers[q.questionNumber] && answers[q.questionNumber] !== q.correctOptionId).length;
+        const attemptedInThisSection = sectionCorrect + sectionIncorrect;
+        const totalInThisSection = sectionQuestions.length;
 
-            return {
-                sectionId: section.id, 
-                sectionName: section.name, 
-                totalQuestions: totalInThisSection,
-                correct: sectionCorrect, 
-                incorrect: sectionIncorrect,
-                accuracy: finalAccuracy
-            }
-        }),
-        deepAnalysis: deepAnalysis,
+        const baseAccuracy = attemptedInThisSection > 0 ? (sectionCorrect / attemptedInThisSection) * 100 : 0;
+        const confidenceFactor = totalInThisSection > 0 ? attemptedInThisSection / totalInThisSection : 0;
+        const finalAccuracy = baseAccuracy * confidenceFactor;
+
+        return {
+          sectionId: section.id,
+          sectionName: section.name,
+          totalQuestions: totalInThisSection,
+          correct: sectionCorrect,
+          incorrect: sectionIncorrect,
+          accuracy: finalAccuracy
+        }
+      }),
+      deepAnalysis: deepAnalysis,
     };
 
     try {
-        const batch = writeBatch(db);
-        const attemptRef = doc(collection(db, "attempts"));
-        batch.set(attemptRef, attemptData);
+      const batch = writeBatch(db);
+      const attemptRef = doc(collection(db, "attempts"));
+      batch.set(attemptRef, attemptData);
 
-        const assignmentQuery = query(
-            collection(db, "assigned_quizzes"),
-            where("quizId", "==", quiz.id),
-            where("studentId", "==", user.studentId),
-            where("status", "==", "pending")
-        );
-        const assignmentSnapshot = await getDocs(assignmentQuery);
-        if (!assignmentSnapshot.empty) {
-            const assignmentDocRef = assignmentSnapshot.docs[0].ref;
-            batch.update(assignmentDocRef, { status: 'completed' });
-        }
-        
-        await batch.commit();
+      const assignmentQuery = query(
+        collection(db, "assigned_quizzes"),
+        where("quizId", "==", quiz.id),
+        where("studentId", "==", user.studentId),
+        where("status", "==", "pending")
+      );
+      const assignmentSnapshot = await getDocs(assignmentQuery);
+      if (!assignmentSnapshot.empty) {
+        const assignmentDocRef = assignmentSnapshot.docs[0].ref;
+        batch.update(assignmentDocRef, { status: 'completed' });
+      }
 
-        localStorage.removeItem(`quiz_progress_${user.studentId}_${quizId}`);
+      await batch.commit();
 
-        setStatus('completed');
-        router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
+      localStorage.removeItem(`quiz_progress_${user.studentId}_${quizId}`);
 
-    } catch(error) {
-        console.error("Error submitting attempt:", error);
-        alert("Failed to submit your attempt. Please try again.");
-        setStatus('active');
+      setStatus('completed');
+      router.push(`/quiz/${quiz.id}/result?attemptId=${attemptRef.id}`);
+
+    } catch (error) {
+      console.error("Error submitting attempt:", error);
+      alert("Failed to submit your attempt. Please try again.");
+      setStatus('active');
     }
   }, [status, quiz, user, answers, flatQuestions, router, timeLeft, quizId]);
 
@@ -311,7 +312,7 @@ export default function QuizPage() {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
-  
+
   const handleSectionSelect = useCallback((sectionId: string) => {
     const firstQuestionIndex = flatQuestions.findIndex(q => q.sectionId === sectionId);
     if (firstQuestionIndex !== -1) {
@@ -322,7 +323,7 @@ export default function QuizPage() {
   const handlePaletteSelect = (questionNumber: number) => {
     const index = questionNumberToIndexMap.get(questionNumber);
     if (index !== undefined) {
-        setCurrentQuestionIndex(index);
+      setCurrentQuestionIndex(index);
     }
     setIsPaletteOpen(false);
   };
@@ -333,55 +334,55 @@ export default function QuizPage() {
     stateSet: Set<number>,
     setter: React.Dispatch<React.SetStateAction<Set<number>>>
   ) => {
-      if (!user || isSyncing || !quiz) return;
-      setIsSyncing(true);
+    if (!user || isSyncing || !quiz) return;
+    setIsSyncing(true);
 
-      const questionNumber = question.questionNumber;
-      const docId = `${user.studentId}_${quizId}_${questionNumber}`;
-      const docRef = doc(db, collectionName, docId);
-      
-      const newSet = new Set(stateSet);
-      let action: 'add' | 'remove' = 'add';
+    const questionNumber = question.questionNumber;
+    const docId = `${user.studentId}_${quizId}_${questionNumber}`;
+    const docRef = doc(db, collectionName, docId);
 
-      try {
-          if (newSet.has(questionNumber)) {
-              action = 'remove';
-              await deleteDoc(docRef);
-              newSet.delete(questionNumber);
-          } else {
-              action = 'add';
-              const payload = {
-                  studentId: user.studentId,
-                  quizId,
-                  quizTitle: quiz.title,
-                  questionNumber: question.questionNumber,
-                  sectionId: question.sectionId,
-                  sectionName: question.sectionName,
-                  chapterBinaryCode: question.chapterBinaryCode,
-                  chapterName: question.chapterName,
-                  questionData: {
-                      text: question.text,
-                      options: question.options,
-                      correctOptionId: question.correctOptionId,
-                      explanation: question.explanation || '',
-                      questionNumber: question.questionNumber,
-                      imageUrl: question.imageUrl || '',
-                  },
-                  addedAt: serverTimestamp(),
-              };
-              await setDoc(docRef, payload);
-              newSet.add(questionNumber);
-          }
-          setter(newSet);
-          toast({
-            title: `Question ${action === 'add' ? 'Added to' : 'Removed from'} ${collectionName === 'starred_questions' ? 'Starred' : 'Flagged'}`,
-          });
-      } catch (error) {
-          console.error(`Failed to toggle ${collectionName}:`, error);
-          toast({ variant: 'destructive', title: `Operation failed.` });
-      } finally {
-          setIsSyncing(false);
+    const newSet = new Set(stateSet);
+    let action: 'add' | 'remove' = 'add';
+
+    try {
+      if (newSet.has(questionNumber)) {
+        action = 'remove';
+        await deleteDoc(docRef);
+        newSet.delete(questionNumber);
+      } else {
+        action = 'add';
+        const payload = {
+          studentId: user.studentId,
+          quizId,
+          quizTitle: quiz.title,
+          questionNumber: question.questionNumber,
+          sectionId: question.sectionId,
+          sectionName: question.sectionName,
+          chapterBinaryCode: question.chapterBinaryCode,
+          chapterName: question.chapterName,
+          questionData: {
+            text: question.text,
+            options: question.options,
+            correctOptionId: question.correctOptionId,
+            explanation: question.explanation || '',
+            questionNumber: question.questionNumber,
+            imageUrl: question.imageUrl || '',
+          },
+          addedAt: serverTimestamp(),
+        };
+        await setDoc(docRef, payload);
+        newSet.add(questionNumber);
       }
+      setter(newSet);
+      toast({
+        title: `Question ${action === 'add' ? 'Added to' : 'Removed from'} ${collectionName === 'starred_questions' ? 'Starred' : 'Flagged'}`,
+      });
+    } catch (error) {
+      console.error(`Failed to toggle ${collectionName}:`, error);
+      toast({ variant: 'destructive', title: `Operation failed.` });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const progress = useMemo(() => {
@@ -390,96 +391,96 @@ export default function QuizPage() {
   }, [currentQuestionIndex, flatQuestions.length]);
 
   if (status === 'loading' || status === 'auth_required') {
-    return ( <div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card className="rounded-2xl"> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div> );
+    return (<div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card className="rounded-2xl"> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div>);
   }
-  
+
   if (status === 'not_found' || status === 'private') {
-    return ( <div className="flex flex-col items-center justify-center min-h-screen text-center p-4"> <ShieldAlert className="h-16 w-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold"> {status === 'not_found' ? 'Quiz Not Found' : 'Access Denied'} </h1> <p className="text-muted-foreground mt-2"> {status === 'not_found' ? 'The quiz you are looking for does not exist.' : 'This quiz is private and cannot be attempted.'} </p> <Button onClick={() => router.push('/dashboard')} className="mt-6">Go to Dashboard</Button> </div> );
+    return (<div className="flex flex-col items-center justify-center min-h-screen text-center p-4"> <ShieldAlert className="h-16 w-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold"> {status === 'not_found' ? 'Quiz Not Found' : 'Access Denied'} </h1> <p className="text-muted-foreground mt-2"> {status === 'not_found' ? 'The quiz you are looking for does not exist.' : 'This quiz is private and cannot be attempted.'} </p> <Button onClick={() => router.push('/dashboard')} className="mt-6">Go to Dashboard</Button> </div>);
   }
 
   const currentQuestion = flatQuestions[currentQuestionIndex];
   const timeIsLow = timeLeft <= 5 * 60;
-  
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {(status === 'active' || status === 'submitting') && quiz && currentQuestion && (
         <>
           <header className="sticky top-0 z-10 flex flex-col pt-2 bg-background/95 backdrop-blur-sm">
             <div className="flex items-center justify-between p-3 flex-wrap gap-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                    {quiz.structure.map((section) => {
-                        const isCurrentSection = section.id === currentQuestion.sectionId;
-                        return (
-                            <Button
-                                key={section.id}
-                                variant={isCurrentSection ? 'default' : 'secondary'}
-                                size="sm"
-                                onClick={() => handleSectionSelect(section.id)}
-                                className="rounded-lg transition-all shadow-sm"
-                                disabled={status === 'submitting'}
-                            >
-                                {section.name}
-                            </Button>
-                        );
-                    })}
-                </div>
-                 <div className={cn("flex items-center gap-4 font-semibold text-lg shrink-0")}>
-                    <Sheet open={isPaletteOpen} onOpenChange={setIsPaletteOpen}>
-                        <SheetTrigger asChild>
-                            <Button variant="outline" size="sm" className="rounded-lg">
-                                <Grid3x3 className="mr-2 h-4 w-4"/>
-                                Palette
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-full sm:w-[350px] sm:max-w-full p-0">
-                            <SheetHeader className="p-4 border-b">
-                                <SheetTitle>Question Palette</SheetTitle>
-                                <SheetDescription>
-                                    Answered: {Object.keys(answers).length} &bull; Unanswered: {flatQuestions.length - Object.keys(answers).length}
-                                </SheetDescription>
-                            </SheetHeader>
-                            <div className="py-4 px-4 space-y-6 overflow-y-auto h-[calc(100vh-8rem)]">
-                                {quiz.structure.map(section => (
-                                    <div key={section.id}>
-                                        <h4 className="font-semibold mb-3 text-base">{section.name}</h4>
-                                        <div className="grid grid-cols-5 gap-2">
-                                            {flatQuestions
-                                                .filter(q => q.sectionId === section.id)
-                                                .map(q => {
-                                                    const isAnswered = answers.hasOwnProperty(q.questionNumber);
-                                                    const isCurrent = q.questionNumber === currentQuestion.questionNumber;
-                                                    const isVisited = visited.has(q.questionNumber);
-                                                    const isSkipped = isVisited && !isAnswered;
+              <div className="flex items-center gap-2 flex-wrap">
+                {quiz.structure.map((section) => {
+                  const isCurrentSection = section.id === currentQuestion.sectionId;
+                  return (
+                    <Button
+                      key={section.id}
+                      variant={isCurrentSection ? 'default' : 'secondary'}
+                      size="sm"
+                      onClick={() => handleSectionSelect(section.id)}
+                      className="rounded-lg transition-all shadow-sm"
+                      disabled={status === 'submitting'}
+                    >
+                      {section.name}
+                    </Button>
+                  );
+                })}
+              </div>
+              <div className={cn("flex items-center gap-4 font-semibold text-lg shrink-0")}>
+                <Sheet open={isPaletteOpen} onOpenChange={setIsPaletteOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-lg">
+                      <Grid3x3 className="mr-2 h-4 w-4" />
+                      Palette
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-full sm:w-[350px] sm:max-w-full p-0">
+                    <SheetHeader className="p-4 border-b">
+                      <SheetTitle>Question Palette</SheetTitle>
+                      <SheetDescription>
+                        Answered: {Object.keys(answers).length} &bull; Unanswered: {flatQuestions.length - Object.keys(answers).length}
+                      </SheetDescription>
+                    </SheetHeader>
+                    <div className="py-4 px-4 space-y-6 overflow-y-auto h-[calc(100vh-8rem)]">
+                      {quiz.structure.map(section => (
+                        <div key={section.id}>
+                          <h4 className="font-semibold mb-3 text-base">{section.name}</h4>
+                          <div className="grid grid-cols-5 gap-2">
+                            {flatQuestions
+                              .filter(q => q.sectionId === section.id)
+                              .map(q => {
+                                const isAnswered = answers.hasOwnProperty(q.questionNumber);
+                                const isCurrent = q.questionNumber === currentQuestion.questionNumber;
+                                const isVisited = visited.has(q.questionNumber);
+                                const isSkipped = isVisited && !isAnswered;
 
-                                                    return (
-                                                        <Button
-                                                            key={q.questionNumber}
-                                                            onClick={() => handlePaletteSelect(q.questionNumber)}
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className={cn("h-9 w-9 p-0 font-bold text-xs", {
-                                                                "bg-green-500/20 border-green-500/50 text-green-800 hover:bg-green-500/30": isAnswered,
-                                                                "bg-red-500/20 border-red-500/50 text-red-800 hover:bg-red-500/30": isSkipped && !isCurrent,
-                                                                "ring-2 ring-primary ring-offset-2": isCurrent
-                                                            })}
-                                                        >
-                                                            {q.questionNumber}
-                                                        </Button>
-                                                    )
-                                                })}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </SheetContent>
-                    </Sheet>
-                    <div className={cn("flex items-center gap-2", timeIsLow ? "text-destructive" : "text-primary")}>
-                        <Timer className="h-6 w-6"/>
-                        <span>
-                            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
-                        </span>
+                                return (
+                                  <Button
+                                    key={q.questionNumber}
+                                    onClick={() => handlePaletteSelect(q.questionNumber)}
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn("h-9 w-9 p-0 font-bold text-xs", {
+                                      "bg-green-500/20 border-green-500/50 text-green-800 hover:bg-green-500/30": isAnswered,
+                                      "bg-red-500/20 border-red-500/50 text-red-800 hover:bg-red-500/30": isSkipped && !isCurrent,
+                                      "ring-2 ring-primary ring-offset-2": isCurrent
+                                    })}
+                                  >
+                                    {q.questionNumber}
+                                  </Button>
+                                )
+                              })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </SheetContent>
+                </Sheet>
+                <div className={cn("flex items-center gap-2", timeIsLow ? "text-destructive" : "text-primary")}>
+                  <Timer className="h-6 w-6" />
+                  <span>
+                    {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </span>
                 </div>
+              </div>
             </div>
             <Progress value={progress} className="h-1" />
           </header>
@@ -497,24 +498,34 @@ export default function QuizPage() {
                 <Card className="bg-transparent border-0 shadow-none rounded-2xl">
                   <CardContent className="p-0">
                     <div className="flex justify-between items-start mb-2">
-                        <div>
-                            <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
-                            <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
-                                <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")}/>
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing}>
-                                <Star className={cn("h-5 w-5", starredQuestions.has(currentQuestion.questionNumber) && "fill-yellow-400 text-yellow-400")}/>
-                            </Button>
-                        </div>
+                      <div>
+                        <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
+                        <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
+                          <Flag className={cn("h-5 w-5", flaggedQuestions.has(currentQuestion.questionNumber) && "fill-orange-500 text-orange-500")} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'starred_questions', starredQuestions, setStarredQuestions)} disabled={isSyncing}>
+                          <Star className={cn("h-5 w-5", starredQuestions.has(currentQuestion.questionNumber) && "fill-yellow-400 text-yellow-400")} />
+                        </Button>
+                      </div>
                     </div>
                     <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed whitespace-pre-wrap">{currentQuestion.text}</p>
                     {currentQuestion.imageUrl && (
-                        <div className="mt-4 rounded-lg overflow-hidden border p-2 bg-secondary">
-                          <Image src={currentQuestion.imageUrl} alt={`Figure for question ${currentQuestion.questionNumber}`} width={500} height={400} className="rounded-md mx-auto object-contain"/>
-                        </div>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <div className="mt-4 rounded-lg overflow-hidden border p-2 bg-secondary cursor-zoom-in hover:opacity-90 transition-opacity">
+                            <Image src={currentQuestion.imageUrl} alt={`Figure for question ${currentQuestion.questionNumber}`} width={800} height={400} priority className="min-h-[250px] min-w-full h-[250px] md:h-[300px] w-full object-contain mx-auto rounded-md bg-white p-2" />
+                          </div>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-3xl w-full p-2 bg-transparent border-none shadow-none flex justify-center items-center">
+                          <DialogTitle className="sr-only">Image details</DialogTitle>
+                          <div className="bg-background rounded-lg p-2 flex justify-center w-full">
+                            <Image src={currentQuestion.imageUrl} alt={`Figure for question ${currentQuestion.questionNumber} enlarged`} width={1600} height={800} className="min-h-[500px] min-w-full h-[500px] md:h-[600px] w-full object-contain rounded-md mx-auto bg-white p-4" />
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     )}
                   </CardContent>
                 </Card>
@@ -524,15 +535,21 @@ export default function QuizPage() {
                       <Button
                         variant="outline"
                         className={cn("w-full h-auto min-h-[56px] justify-start text-left p-4 text-base md:text-lg whitespace-normal border-2 rounded-xl",
-                          answers[currentQuestion.questionNumber] === option.id 
-                          ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(124,58,237,0.3)]"
-                          : "border-input"
+                          answers[currentQuestion.questionNumber] === option.id
+                            ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(124,58,237,0.3)]"
+                            : "border-input"
                         )}
                         onClick={() => handleSelectOption(currentQuestion.questionNumber, option.id)}
                         disabled={status === 'submitting'}
                       >
-                        <span className="mr-4 font-bold">{option.id}.</span>
-                        {option.text}
+                        <span className="mr-4 font-bold shrink-0">{option.id}.</span>
+                        {option.imageUrl ? (
+                          <div className="flex-1 flex justify-center">
+                            <Image src={option.imageUrl} alt={`Option ${option.id}`} width={400} height={200} className="max-h-32 md:max-h-40 w-auto object-contain rounded bg-white p-1" />
+                          </div>
+                        ) : (
+                          option.text
+                        )}
                       </Button>
                     </motion.div>
                   ))}
@@ -544,22 +561,22 @@ export default function QuizPage() {
           <footer className="sticky bottom-0 flex items-center justify-between p-3 border-t bg-background/80 backdrop-blur-sm">
             <div className="max-w-4xl mx-auto flex justify-between w-full">
               <Button variant="outline" onClick={handlePrev} disabled={currentQuestionIndex === 0 || status === 'submitting'} className="rounded-xl">
-                <ArrowLeft/> Prev
+                <ArrowLeft /> Prev
               </Button>
               {currentQuestionIndex === flatQuestions.length - 1 ? (
                 <Button onClick={handleSubmit} disabled={status === 'submitting'} className="bg-green-600 hover:bg-green-700 rounded-xl">
-                  <CheckCircle/> Submit Quiz
+                  <CheckCircle /> Submit Quiz
                 </Button>
               ) : (
                 <Button onClick={handleNext} disabled={status === 'submitting'} className="rounded-xl">
-                  Next <ArrowRight/>
+                  Next <ArrowRight />
                 </Button>
               )}
             </div>
           </footer>
         </>
       )}
-       <AlertDialog open={status === 'submitting'}>
+      <AlertDialog open={status === 'submitting'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-center">Submitting Your Answers...</AlertDialogTitle>

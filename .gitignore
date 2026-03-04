@@ -43,3 +43,9 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# ingestion pipeline
+scripts/serviceAccountKey.json
+scripts/papers/
+*_parsed.json
+scripts/vision_key.json

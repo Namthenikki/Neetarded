@@ -10,6 +10,8 @@ import {
   Shield,
   Library,
   Sparkles,
+  Layers,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,19 +38,24 @@ const studentNavLinks = [
 ];
 
 const adminNavLinks = [
-    { href: "/dashboard/admin", icon: Shield, label: "Admin" },
-    { href: "/dashboard/create", icon: BookPlus, label: "Create Quiz" },
+  { href: "/dashboard/admin", icon: Shield, label: "Admin Dashboard" },
+  { href: "/dashboard/upload", icon: Sparkles, label: "Upload PDF" },
+  { href: "/dashboard/question-bank", icon: Library, label: "Question Bank" },
+  { href: "/review", icon: BookCopy, label: "Review Parsed Qs" },
+  { href: "/review/recycle-bin", icon: Trash2, label: "Recycle Bin" },
+  { href: "/dashboard/create", icon: BookPlus, label: "Create Quiz" },
+  { href: "/dashboard/custom-quiz", icon: Layers, label: "Custom Quiz Builder" },
 ]
 
 export function SidebarNav() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  
+
   // Create a unique set of links for the admin to avoid duplicates
   const adminFinalLinks = [
-      ...adminNavLinks,
-      { href: "/dashboard/quizzes", icon: BookCopy, label: "All Quizzes" },
-      { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
+    ...adminNavLinks,
+    { href: "/dashboard/quizzes", icon: BookCopy, label: "All Quizzes" },
+    { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
   ];
 
   const navLinks = user?.role === 'admin' ? adminFinalLinks : studentNavLinks;
@@ -65,21 +72,22 @@ export function SidebarNav() {
       <nav className="flex-1">
         <ul className="space-y-1">
           {navLinks.map((link) => {
-             const isActive = (pathname.startsWith(link.href) && link.href !== '/dashboard' && link.href !== '/dashboard/admin') || pathname === link.href;
+            const isActive = (pathname.startsWith(link.href) && link.href !== '/dashboard' && link.href !== '/dashboard/admin') || pathname === link.href;
             return (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary",
-                  isActive ? "bg-primary/10 text-primary font-medium" : ""
-                )}
-              >
-                <link.icon className="h-5 w-5" />
-                <span>{link.label}</span>
-              </Link>
-            </li>
-          )})}
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors hover:bg-primary/10 hover:text-primary",
+                    isActive ? "bg-primary/10 text-primary font-medium" : ""
+                  )}
+                >
+                  <link.icon className="h-5 w-5" />
+                  <span>{link.label}</span>
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       </nav>
       <div>

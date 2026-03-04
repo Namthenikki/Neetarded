@@ -9,7 +9,7 @@ export interface QuizSettings {
 export interface Question {
   questionNumber: number;
   text: string;
-  options: { id: string; text: string }[];
+  options: { id: string; text: string; imageUrl?: string }[];
   correctOptionId: string;
   explanation?: string;
   imageUrl?: string;
@@ -53,7 +53,7 @@ export interface QuizAttempt {
   quizId: string;
   quizTitle: string;
   userId: string; // Firebase auth UID or 'guest'
-  
+
   studentId: string; // The persistent guest/student ID
   studentName: string; // The guest/student name
   isGuest: boolean;

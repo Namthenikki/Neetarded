@@ -10,16 +10,16 @@ import { QUIZ_SUBJECTS } from '@/lib/quiz-data';
 
 // The input schema remains the same, as we still need to provide this data to the flow.
 export const QuizParserInputSchema = z.object({
-  rawQuestions: z.string().describe("The raw, unstructured text containing all the quiz questions. Questions may be prefixed with markers like '#PHY #000001' to indicate their section and chapter."),
-  rawAnswers: z.string().describe("The raw text of the answer key. This includes the correct option and potentially an explanation for each question number."),
-  structure: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    chapters: z.array(z.object({
-      name: z.string(),
-      binaryCode: z.string(),
-    })),
-  })).describe("The predefined structure of the quiz. This provides context for section and chapter names."),
+    rawQuestions: z.string().describe("The raw, unstructured text containing all the quiz questions. Questions may be prefixed with markers like '#PHY #000001' to indicate their section and chapter."),
+    rawAnswers: z.string().describe("The raw text of the answer key. This includes the correct option and potentially an explanation for each question number."),
+    structure: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        chapters: z.array(z.object({
+            name: z.string(),
+            binaryCode: z.string(),
+        })),
+    })).describe("The predefined structure of the quiz. This provides context for section and chapter names."),
 });
 export type QuizParserInput = z.infer<typeof QuizParserInputSchema>;
 
@@ -47,26 +47,28 @@ const AiOutputSchema = z.object({
 // The final output schema of the FLOW remains the same nested structure.
 // We are just changing how we get here.
 export const QuizParserOutputSchema = z.object({
-  parsedStructure: z.custom<QuizStructure>()
+    parsedStructure: z.custom<QuizStructure>()
 });
 export type QuizParserOutput = z.infer<typeof QuizParserOutputSchema>;
 
 
 export async function parseQuiz(input: QuizParserInput): Promise<QuizParserOutput> {
-  return quizParserFlow(input);
+    return quizParserFlow(input);
 }
 
 
 // The prompt is updated to request the FLAT structure.
 const quizParserPrompt = ai.definePrompt({
-  name: 'quizParserPrompt',
-  input: { schema: z.object({ // Prompt input is just the raw text parts
-      rawQuestions: QuizParserInputSchema.shape.rawQuestions,
-      rawAnswers: QuizParserInputSchema.shape.rawAnswers,
-      structure: z.string(), // We'll stringify it
-  }) },
-  output: { schema: AiOutputSchema }, // The AI's direct output is the FLAT schema
-  prompt: `You are an expert data parser for a competitive exam preparation app.
+    name: 'quizParserPrompt',
+    input: {
+        schema: z.object({ // Prompt input is just the raw text parts
+            rawQuestions: QuizParserInputSchema.shape.rawQuestions,
+            rawAnswers: QuizParserInputSchema.shape.rawAnswers,
+            structure: z.string(), // We'll stringify it
+        })
+    },
+    output: { schema: AiOutputSchema }, // The AI's direct output is the FLAT schema
+    prompt: `You are an expert data parser for a competitive exam preparation app.
 Your task is to convert raw text for questions and answers into a structured JSON format.
 
 **Instructions:**
@@ -81,7 +83,8 @@ Your task is to convert raw text for questions and answers into a structured JSO
 3.  **Image Handling**: If a question's text contains a tag like \`[Image: URL]\`, you must extract the URL into the \`imageUrl\` field for that question object. Then, you MUST REMOVE the entire \`[Image: URL]\` tag from the final question \`text\` field.
 4.  **Parse Answers**: Read the raw answers text. Match the question number to find its correct answer and explanation.
 5.  **Construct FLAT JSON**: Create a SINGLE FLAT ARRAY of question objects. Each object must conform to the JSON schema.
-6.  **Strict Output**: The final output MUST be a single, valid JSON object that strictly conforms to the output schema. Do not include any other text, explanations, or markdown formatting like \`\`\`json. The output should be just the \`{ "questions": [...] }\` object.
+6.  **Handle Missing Symbols**: Text copied from PDFs often misses variables or formulas that were rendered as inline images (e.g., a vector symbol like B or E, or a fraction). If you notice a grammatical or logical gap where a Physics/Chemistry/Math symbol clearly belongs (e.g., "magnetic field . The" -> "magnetic field B. The"), intelligently infer the missing symbol from the context and insert it into the question text.
+7.  **Strict Output**: The final output MUST be a single, valid JSON object that strictly conforms to the output schema. Do not include any other text, explanations, or markdown formatting like \`\`\`json. The output should be just the \`{ "questions": [...] }\` object.
 
 **Input Data:**
 
@@ -104,99 +107,99 @@ Now, parse the data and generate the flat JSON output.`,
 
 // The flow now contains the re-grouping logic.
 const quizParserFlow = ai.defineFlow(
-  {
-    name: 'quizParserFlow',
-    inputSchema: QuizParserInputSchema,
-    outputSchema: QuizParserOutputSchema,
-  },
-  async (input) => {
-    // 1. Call the AI to get the flat list of questions
-    const { output: flatData } = await quizParserPrompt({
-        rawQuestions: input.rawQuestions,
-        rawAnswers: input.rawAnswers,
-        // @ts-ignore - handlebars templates can't be typed
-        structure: JSON.stringify(input.structure.map(s => ({...s, chapters: s.chapters.map(c => ({name: c.name, binaryCode: c.binaryCode}))})), null, 2)
-    });
-
-    if (!flatData || !flatData.questions) {
-        throw new Error('AI parsing failed to produce a valid question list.');
-    }
-
-    // 2. Build a master lookup map for ALL possible chapters from the canonical source
-    const masterChapterMap: Map<string, { name: string; subjectId: string }> = new Map();
-    QUIZ_SUBJECTS.forEach(subject => {
-        subject.chapters.forEach(chapter => {
-            const mapKey = `${subject.id}__${chapter.binaryCode}`;
-            masterChapterMap.set(mapKey, { name: chapter.name, subjectId: subject.id });
+    {
+        name: 'quizParserFlow',
+        inputSchema: QuizParserInputSchema,
+        outputSchema: QuizParserOutputSchema,
+    },
+    async (input) => {
+        // 1. Call the AI to get the flat list of questions
+        const { output: flatData } = await quizParserPrompt({
+            rawQuestions: input.rawQuestions,
+            rawAnswers: input.rawAnswers,
+            // @ts-ignore - handlebars templates can't be typed
+            structure: JSON.stringify(input.structure.map(s => ({ ...s, chapters: s.chapters.map(c => ({ name: c.name, binaryCode: c.binaryCode })) })), null, 2)
         });
-    });
 
-    // 3. Group the flat list into the nested structure (the "re-grouping logic")
-    const finalStructure: QuizStructure = JSON.parse(JSON.stringify(input.structure)); // Deep copy to start
-
-    // Create maps for quick lookups of existing sections and chapters
-    const sectionMap = new Map<string, Section>(finalStructure.map(s => [s.id, s]));
-    const chapterMap = new Map<string, Chapter>();
-    finalStructure.forEach(section => {
-        section.chapters.forEach(chapter => {
-            chapter.questions = []; // Ensure questions array is initialized and empty
-            const mapKey = `${section.id}__${chapter.binaryCode}`;
-            chapterMap.set(mapKey, chapter);
-        });
-    });
-
-    // Process each question from the AI's flat output
-    flatData.questions.forEach(q => {
-        const questionData: Question = {
-            questionNumber: q.questionNumber,
-            text: q.text,
-            options: q.options,
-            correctOptionId: q.correctOptionId,
-            explanation: q.explanation,
-            imageUrl: q.imageUrl
-        };
-
-        const mapKey = `${q.sectionId}__${q.chapterBinaryCode}`;
-        let chapter = chapterMap.get(mapKey);
-
-        // If the chapter doesn't exist in the admin-defined structure, create it dynamically
-        if (!chapter) {
-            // Find its parent section. If it doesn't exist, create it too.
-            let section = sectionMap.get(q.sectionId);
-            if (!section) {
-                const subjectData = QUIZ_SUBJECTS.find(s => s.id === q.sectionId);
-                section = {
-                    id: q.sectionId,
-                    name: subjectData ? subjectData.name : `Section ${q.sectionId}`,
-                    chapters: []
-                };
-                sectionMap.set(q.sectionId, section);
-                finalStructure.push(section); // Add new section to the main structure
-            }
-            
-            // Look up the correct chapter name from our master list
-            const masterChapterData = masterChapterMap.get(mapKey);
-            
-            chapter = {
-                name: masterChapterData ? masterChapterData.name : `Chapter ${q.chapterBinaryCode}`,
-                binaryCode: q.chapterBinaryCode,
-                questions: []
-            };
-            
-            section.chapters.push(chapter); // Add the new chapter to its section
-            chapterMap.set(mapKey, chapter); // Add to map for future lookups
+        if (!flatData || !flatData.questions) {
+            throw new Error('AI parsing failed to produce a valid question list.');
         }
-        
-        chapter.questions?.push(questionData);
-    });
-    
-    // Sort questions within each chapter by their original number
-    finalStructure.forEach(section => {
-        section.chapters.forEach(chapter => {
-            chapter.questions?.sort((a, b) => a.questionNumber - b.questionNumber);
-        });
-    });
 
-    return { parsedStructure: finalStructure };
-  }
+        // 2. Build a master lookup map for ALL possible chapters from the canonical source
+        const masterChapterMap: Map<string, { name: string; subjectId: string }> = new Map();
+        QUIZ_SUBJECTS.forEach(subject => {
+            subject.chapters.forEach(chapter => {
+                const mapKey = `${subject.id}__${chapter.binaryCode}`;
+                masterChapterMap.set(mapKey, { name: chapter.name, subjectId: subject.id });
+            });
+        });
+
+        // 3. Group the flat list into the nested structure (the "re-grouping logic")
+        const finalStructure: QuizStructure = JSON.parse(JSON.stringify(input.structure)); // Deep copy to start
+
+        // Create maps for quick lookups of existing sections and chapters
+        const sectionMap = new Map<string, Section>(finalStructure.map(s => [s.id, s]));
+        const chapterMap = new Map<string, Chapter>();
+        finalStructure.forEach(section => {
+            section.chapters.forEach(chapter => {
+                chapter.questions = []; // Ensure questions array is initialized and empty
+                const mapKey = `${section.id}__${chapter.binaryCode}`;
+                chapterMap.set(mapKey, chapter);
+            });
+        });
+
+        // Process each question from the AI's flat output
+        flatData.questions.forEach(q => {
+            const questionData: Question = {
+                questionNumber: q.questionNumber,
+                text: q.text,
+                options: q.options,
+                correctOptionId: q.correctOptionId,
+                explanation: q.explanation,
+                imageUrl: q.imageUrl
+            };
+
+            const mapKey = `${q.sectionId}__${q.chapterBinaryCode}`;
+            let chapter = chapterMap.get(mapKey);
+
+            // If the chapter doesn't exist in the admin-defined structure, create it dynamically
+            if (!chapter) {
+                // Find its parent section. If it doesn't exist, create it too.
+                let section = sectionMap.get(q.sectionId);
+                if (!section) {
+                    const subjectData = QUIZ_SUBJECTS.find(s => s.id === q.sectionId);
+                    section = {
+                        id: q.sectionId,
+                        name: subjectData ? subjectData.name : `Section ${q.sectionId}`,
+                        chapters: []
+                    };
+                    sectionMap.set(q.sectionId, section);
+                    finalStructure.push(section); // Add new section to the main structure
+                }
+
+                // Look up the correct chapter name from our master list
+                const masterChapterData = masterChapterMap.get(mapKey);
+
+                chapter = {
+                    name: masterChapterData ? masterChapterData.name : `Chapter ${q.chapterBinaryCode}`,
+                    binaryCode: q.chapterBinaryCode,
+                    questions: []
+                };
+
+                section.chapters.push(chapter); // Add the new chapter to its section
+                chapterMap.set(mapKey, chapter); // Add to map for future lookups
+            }
+
+            chapter.questions?.push(questionData);
+        });
+
+        // Sort questions within each chapter by their original number
+        finalStructure.forEach(section => {
+            section.chapters.forEach(chapter => {
+                chapter.questions?.sort((a, b) => a.questionNumber - b.questionNumber);
+            });
+        });
+
+        return { parsedStructure: finalStructure };
+    }
 );
