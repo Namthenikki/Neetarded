@@ -46,6 +46,7 @@ interface QuestionDoc {
         explanation?: string;
         imageUrl?: string;
     };
+    has_active_flag?: boolean;
     flag_reason?: string;
     flagged_by?: string;
 }
@@ -164,7 +165,7 @@ export default function QuestionBankPage() {
     const stats = useMemo(() => {
         const total = questions.length;
         const approved = questions.filter((q) => q.training_status === "approved").length;
-        const flagged = questions.filter((q) => q.training_status === "flagged").length;
+        const flagged = questions.filter((q) => q.has_active_flag).length;
         const pending = questions.filter((q) => q.training_status === "pending_review").length;
         const withImages = questions.filter(
             (q) => q.image_url || q.optimized_json?.imageUrl
@@ -245,12 +246,18 @@ export default function QuestionBankPage() {
         if (!studentFlagId || !studentFlagReason.trim() || !user) return;
         try {
             await updateDoc(doc(db, "QuestionBank", studentFlagId), {
-                training_status: "flagged",
+                has_active_flag: true,
                 flag_reason: studentFlagReason.trim(),
                 flagged_by: user.studentId
             });
-            // Remove from student's view since it's no longer approved
-            setQuestions((prev) => prev.filter((q) => q.id !== studentFlagId));
+            // Keep question in view, just update its local state
+            setQuestions((prev) =>
+                prev.map((q) =>
+                    q.id === studentFlagId
+                        ? { ...q, has_active_flag: true, flag_reason: studentFlagReason.trim(), flagged_by: user.studentId }
+                        : q
+                )
+            );
             toast({ title: "🚩 Flag reported successfully" });
         } catch {
             toast({ variant: "destructive", title: "Failed to submit flag" });
@@ -478,7 +485,7 @@ export default function QuestionBankPage() {
                         const imgUrl = q.image_url || opt?.imageUrl;
 
                         return (
-                            <Card key={q.id} className={cn("rounded-2xl hover:shadow-md transition-shadow", q.training_status === "flagged" ? "border-red-200" : "")}>
+                            <Card key={q.id} className={cn("rounded-2xl hover:shadow-md transition-shadow", q.has_active_flag ? "border-red-200" : "")}>
                                 <CardContent className="p-5">
                                     <div className="flex gap-4">
                                         {/* Question content */}
@@ -612,13 +619,14 @@ export default function QuestionBankPage() {
                                             </div>
 
                                             {/* Flag Reason Display (Admin Only) */}
-                                            {user?.role === 'admin' && q.training_status === 'flagged' && q.flag_reason && (
+                                            {user?.role === 'admin' && q.has_active_flag && q.flag_reason && (
                                                 <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
                                                     <div className="flex items-center gap-1.5 text-red-800 font-medium text-xs mb-1">
                                                         <AlertTriangle className="h-3.5 w-3.5" />
-                                                        Flagged by {q.flagged_by || 'Student'}
+                                                        Active Flag reported by {q.flagged_by || 'Student'}
                                                     </div>
                                                     <p className="text-sm text-red-700">{q.flag_reason}</p>
+                                                    <span className="text-[10px] text-red-500 font-semibold mt-2 inline-block uppercase tracking-wider">Review in Notifications Page</span>
                                                 </div>
                                             )}
                                         </div>

@@ -12,6 +12,7 @@ import {
   Sparkles,
   Layers,
   Trash2,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -47,6 +48,7 @@ export const adminNavLinks = [
   { href: "/review/recycle-bin", icon: Trash2, label: "Recycle Bin" },
   { href: "/dashboard/create", icon: BookPlus, label: "Create Quiz" },
   { href: "/dashboard/custom-quiz", icon: Layers, label: "Custom Quiz Builder" },
+  { href: "/dashboard/notifications", icon: Bell, label: "Notifications" },
 ];
 
 export function SidebarNav() {
