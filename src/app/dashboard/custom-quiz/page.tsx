@@ -672,119 +672,121 @@ export default function CustomQuizPage() {
 
             <div className="space-y-8 max-w-5xl mx-auto pb-32">
                 {/* Quick Upload Section */}
-                <Card className="shadow-sm border-dashed border-2">
-                    <CardHeader
-                        className="cursor-pointer"
-                        onClick={() => setShowUpload(!showUpload)}
-                    >
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Upload className="h-5 w-5 text-primary" />
-                                <CardTitle className="text-base">Quick Upload PDF</CardTitle>
+                {user?.role === 'admin' && (
+                    <Card className="shadow-sm border-dashed border-2">
+                        <CardHeader
+                            className="cursor-pointer"
+                            onClick={() => setShowUpload(!showUpload)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Upload className="h-5 w-5 text-primary" />
+                                    <CardTitle className="text-base">Quick Upload PDF</CardTitle>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                    {showUpload ? "▲ Hide" : "▼ Upload a new paper and parse questions directly"}
+                                </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                                {showUpload ? "▲ Hide" : "▼ Upload a new paper and parse questions directly"}
-                            </span>
-                        </div>
-                    </CardHeader>
-                    {showUpload && (
-                        <CardContent className="space-y-3">
-                            <div
-                                onClick={() => !isUploading && uploadRef.current?.click()}
-                                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${uploadFile ? "border-emerald-300 bg-emerald-50/50" : "border-slate-300 hover:border-primary/50"
-                                    } ${isUploading ? "pointer-events-none opacity-60" : ""}`}
-                            >
-                                <input
-                                    ref={uploadRef}
-                                    type="file"
-                                    accept=".pdf"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) {
-                                            setUploadFile(f);
-                                            if (!uploadSource) setUploadSource(f.name.replace(".pdf", ""));
-                                        }
-                                    }}
-                                />
-                                {uploadFile ? (
-                                    <div className="flex items-center justify-center gap-3">
-                                        <FileText className="h-6 w-6 text-emerald-600" />
-                                        <div className="text-left">
-                                            <p className="font-medium text-sm text-slate-800">{uploadFile.name}</p>
-                                            <p className="text-xs text-slate-500">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </CardHeader>
+                        {showUpload && (
+                            <CardContent className="space-y-3">
+                                <div
+                                    onClick={() => !isUploading && uploadRef.current?.click()}
+                                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${uploadFile ? "border-emerald-300 bg-emerald-50/50" : "border-slate-300 hover:border-primary/50"
+                                        } ${isUploading ? "pointer-events-none opacity-60" : ""}`}
+                                >
+                                    <input
+                                        ref={uploadRef}
+                                        type="file"
+                                        accept=".pdf"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const f = e.target.files?.[0];
+                                            if (f) {
+                                                setUploadFile(f);
+                                                if (!uploadSource) setUploadSource(f.name.replace(".pdf", ""));
+                                            }
+                                        }}
+                                    />
+                                    {uploadFile ? (
+                                        <div className="flex items-center justify-center gap-3">
+                                            <FileText className="h-6 w-6 text-emerald-600" />
+                                            <div className="text-left">
+                                                <p className="font-medium text-sm text-slate-800">{uploadFile.name}</p>
+                                                <p className="text-xs text-slate-500">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                                            </div>
+                                            {!isUploading && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadSource(""); setUploadResult(null); }}
+                                                    className="text-slate-400 hover:text-red-500"
+                                                >
+                                                    <XCircle className="h-5 w-5" />
+                                                </button>
+                                            )}
                                         </div>
-                                        {!isUploading && (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadSource(""); setUploadResult(null); }}
-                                                className="text-slate-400 hover:text-red-500"
-                                            >
-                                                <XCircle className="h-5 w-5" />
-                                            </button>
-                                        )}
+                                    ) : (
+                                        <>
+                                            <Upload className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                                            <p className="text-sm text-slate-500">Drop PDF here or click to browse</p>
+                                        </>
+                                    )}
+                                </div>
+
+                                {isUploading && (
+                                    <div className="space-y-2 mt-4">
+                                        <div className="flex justify-between text-xs text-slate-500 font-medium">
+                                            <span className="flex items-center gap-1">
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                {uploadProgress.text}
+                                            </span>
+                                            <span>{Math.round(uploadProgress.percent)}%</span>
+                                        </div>
+                                        <Progress value={uploadProgress.percent} className="h-2" />
                                     </div>
-                                ) : (
-                                    <>
-                                        <Upload className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                                        <p className="text-sm text-slate-500">Drop PDF here or click to browse</p>
-                                    </>
                                 )}
-                            </div>
 
-                            {isUploading && (
-                                <div className="space-y-2 mt-4">
-                                    <div className="flex justify-between text-xs text-slate-500 font-medium">
-                                        <span className="flex items-center gap-1">
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                            {uploadProgress.text}
-                                        </span>
-                                        <span>{Math.round(uploadProgress.percent)}%</span>
-                                    </div>
-                                    <Progress value={uploadProgress.percent} className="h-2" />
-                                </div>
-                            )}
-
-                            {uploadFile && !isUploading && (
-                                <div className="flex gap-3 items-end">
-                                    <div className="flex-1">
-                                        <Label className="text-xs">Source Name</Label>
-                                        <Input
-                                            value={uploadSource}
-                                            onChange={(e) => setUploadSource(e.target.value)}
-                                            placeholder="e.g. NEET 2024"
-                                            disabled={isUploading}
+                                {uploadFile && !isUploading && (
+                                    <div className="flex gap-3 items-end">
+                                        <div className="flex-1">
+                                            <Label className="text-xs">Source Name</Label>
+                                            <Input
+                                                value={uploadSource}
+                                                onChange={(e) => setUploadSource(e.target.value)}
+                                                placeholder="e.g. NEET 2024"
+                                                disabled={isUploading}
+                                                className="rounded-lg h-9"
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={handleUploadPdf}
+                                            disabled={isUploading || !uploadSource.trim()}
                                             className="rounded-lg h-9"
-                                        />
+                                        >
+                                            {isUploading ? (
+                                                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Parsing...</>
+                                            ) : (
+                                                <><Upload className="h-4 w-4 mr-1" /> Upload & Parse</>
+                                            )}
+                                        </Button>
                                     </div>
-                                    <Button
-                                        onClick={handleUploadPdf}
-                                        disabled={isUploading || !uploadSource.trim()}
-                                        className="rounded-lg h-9"
-                                    >
-                                        {isUploading ? (
-                                            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Parsing...</>
-                                        ) : (
-                                            <><Upload className="h-4 w-4 mr-1" /> Upload & Parse</>
-                                        )}
-                                    </Button>
-                                </div>
-                            )}
+                                )}
 
-                            {uploadResult && (
-                                <div className={`rounded-lg p-3 text-sm flex items-center gap-2 ${uploadResult.success ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                                    }`}>
-                                    <CheckCircle className="h-4 w-4 shrink-0" />
-                                    <span>
-                                        {uploadResult.success
-                                            ? `${uploadResult.count} questions parsed and pushed to QuestionBank! You can now select chapters below.`
-                                            : `${uploadResult.count} questions parsed with some issues. Check the Upload PDF page for details.`
-                                        }
-                                    </span>
-                                </div>
-                            )}
-                        </CardContent>
-                    )}
-                </Card>
+                                {uploadResult && (
+                                    <div className={`rounded-lg p-3 text-sm flex items-center gap-2 ${uploadResult.success ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                                        }`}>
+                                        <CheckCircle className="h-4 w-4 shrink-0" />
+                                        <span>
+                                            {uploadResult.success
+                                                ? `${uploadResult.count} questions parsed and pushed to QuestionBank! You can now select chapters below.`
+                                                : `${uploadResult.count} questions parsed with some issues. Check the Upload PDF page for details.`
+                                            }
+                                        </span>
+                                    </div>
+                                )}
+                            </CardContent>
+                        )}
+                    </Card>
+                )}
 
                 {/* Step 1: Quiz Settings */}
                 <Card className="shadow-sm">

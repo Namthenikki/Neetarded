@@ -29,15 +29,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 
-const studentNavLinks = [
+export const studentNavLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/dashboard/aura", icon: Sparkles, label: "Aura" },
   { href: "/dashboard/my-library", icon: Library, label: "My Library" },
   { href: "/dashboard/quizzes", icon: BookCopy, label: "My Quizzes" },
+  { href: "/dashboard/question-bank", icon: Library, label: "Question Bank" },
+  { href: "/dashboard/custom-quiz", icon: Layers, label: "Custom Quiz" },
   { href: "/dashboard/profile", icon: UserIcon, label: "Profile" },
 ];
 
-const adminNavLinks = [
+export const adminNavLinks = [
   { href: "/dashboard/admin", icon: Shield, label: "Admin Dashboard" },
   { href: "/dashboard/upload", icon: Sparkles, label: "Upload PDF" },
   { href: "/dashboard/question-bank", icon: Library, label: "Question Bank" },
@@ -45,7 +47,7 @@ const adminNavLinks = [
   { href: "/review/recycle-bin", icon: Trash2, label: "Recycle Bin" },
   { href: "/dashboard/create", icon: BookPlus, label: "Create Quiz" },
   { href: "/dashboard/custom-quiz", icon: Layers, label: "Custom Quiz Builder" },
-]
+];
 
 export function SidebarNav() {
   const pathname = usePathname();

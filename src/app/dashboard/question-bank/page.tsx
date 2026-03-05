@@ -46,6 +46,8 @@ interface QuestionDoc {
         explanation?: string;
         imageUrl?: string;
     };
+    flag_reason?: string;
+    flagged_by?: string;
 }
 
 const SUBJECTS = [
@@ -82,6 +84,10 @@ export default function QuestionBankPage() {
     const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
     const [bulkDeleteSource, setBulkDeleteSource] = useState("all");
     const [uploadingOptionId, setUploadingOptionId] = useState<string | null>(null);
+
+    // Student flag states
+    const [studentFlagId, setStudentFlagId] = useState<string | null>(null);
+    const [studentFlagReason, setStudentFlagReason] = useState("");
 
     const handleOptionImageUpload = async (questionDoc: QuestionDoc, optionId: string, file: File) => {
         const uploadKey = `${questionDoc.id}_${optionId}`;
@@ -123,7 +129,7 @@ export default function QuestionBankPage() {
 
     useEffect(() => {
         if (authLoading) return;
-        if (!user || user.role !== "admin") {
+        if (!user) {
             router.replace("/login");
             return;
         }
@@ -131,7 +137,13 @@ export default function QuestionBankPage() {
         async function fetchAll() {
             setLoading(true);
             try {
-                const snap = await getDocs(collection(db, "QuestionBank"));
+                let snap;
+                if (user?.role === "admin") {
+                    snap = await getDocs(collection(db, "QuestionBank"));
+                } else {
+                    snap = await getDocs(query(collection(db, "QuestionBank"), where("training_status", "==", "approved")));
+                }
+
                 const docs = snap.docs.map((d) => ({
                     id: d.id,
                     ...d.data(),
@@ -226,6 +238,25 @@ export default function QuestionBankPage() {
             toast({ title: "🚩 Flagged" });
         } catch {
             toast({ variant: "destructive", title: "Failed to flag" });
+        }
+    };
+
+    const handleStudentFlag = async () => {
+        if (!studentFlagId || !studentFlagReason.trim() || !user) return;
+        try {
+            await updateDoc(doc(db, "QuestionBank", studentFlagId), {
+                training_status: "flagged",
+                flag_reason: studentFlagReason.trim(),
+                flagged_by: user.studentId
+            });
+            // Remove from student's view since it's no longer approved
+            setQuestions((prev) => prev.filter((q) => q.id !== studentFlagId));
+            toast({ title: "🚩 Flag reported successfully" });
+        } catch {
+            toast({ variant: "destructive", title: "Failed to submit flag" });
+        } finally {
+            setStudentFlagId(null);
+            setStudentFlagReason("");
         }
     };
 
@@ -380,46 +411,52 @@ export default function QuestionBankPage() {
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="w-full md:w-[180px] rounded-xl">
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                                {STATUSES.map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Bulk Actions */}
-                    <div className="mt-4 pt-4 border-t flex flex-wrap gap-3 items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Select value={bulkDeleteSource} onValueChange={setBulkDeleteSource}>
-                                <SelectTrigger className="w-[200px] h-8 rounded-lg text-xs">
-                                    <SelectValue placeholder="Select PDF to delete" />
+                        {user?.role === 'admin' && (
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="w-full md:w-[180px] rounded-xl">
+                                    <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent className="rounded-xl">
-                                    <SelectItem value="all">Do not delete</SelectItem>
-                                    {uniqueSources.map((source) => (
-                                        <SelectItem key={source} value={source}>
-                                            Delete "{source}"
-                                        </SelectItem>
+                                    {STATUSES.map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                className="h-8 text-xs rounded-lg"
-                                disabled={bulkDeleteSource === "all"}
-                                onClick={() => setIsBulkDeleteDialogOpen(true)}
-                            >
-                                <Trash2 className="h-3 w-3 mr-1" /> Delete By Source
-                            </Button>
-                        </div>
+                        )}
+                    </div>
+
+                    {/* Bulk Actions (Admin only) */}
+                    <div className="mt-4 pt-4 border-t flex flex-wrap gap-3 items-center justify-between">
+                        {user?.role === 'admin' ? (
+                            <div className="flex items-center gap-2">
+                                <Select value={bulkDeleteSource} onValueChange={setBulkDeleteSource}>
+                                    <SelectTrigger className="w-[200px] h-8 rounded-lg text-xs">
+                                        <SelectValue placeholder="Select PDF to delete" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        <SelectItem value="all">Do not delete</SelectItem>
+                                        {uniqueSources.map((source) => (
+                                            <SelectItem key={source} value={source}>
+                                                Delete "{source}"
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-8 text-xs rounded-lg"
+                                    disabled={bulkDeleteSource === "all"}
+                                    onClick={() => setIsBulkDeleteDialogOpen(true)}
+                                >
+                                    <Trash2 className="h-3 w-3 mr-1" /> Delete By Source
+                                </Button>
+                            </div>
+                        ) : (
+                            <div></div>
+                        )}
                         <p className="text-xs text-slate-500">
-                            Showing {filtered.length} of {stats.total} questions
+                            Showing {filtered.length} of {user?.role === 'admin' ? stats.total : stats.approved} questions
                         </p>
                     </div>
                 </CardContent>
@@ -441,7 +478,7 @@ export default function QuestionBankPage() {
                         const imgUrl = q.image_url || opt?.imageUrl;
 
                         return (
-                            <Card key={q.id} className="rounded-2xl hover:shadow-md transition-shadow">
+                            <Card key={q.id} className={cn("rounded-2xl hover:shadow-md transition-shadow", q.training_status === "flagged" ? "border-red-200" : "")}>
                                 <CardContent className="p-5">
                                     <div className="flex gap-4">
                                         {/* Question content */}
@@ -498,24 +535,26 @@ export default function QuestionBankPage() {
                                                                 ) : (
                                                                     <span className="flex-1">{option.text}</span>
                                                                 )}
-                                                                <label className="shrink-0 cursor-pointer">
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        className="hidden"
-                                                                        onChange={(e) => {
-                                                                            const file = e.target.files?.[0];
-                                                                            if (file) handleOptionImageUpload(q, option.id, file);
-                                                                            e.target.value = "";
-                                                                        }}
-                                                                        disabled={uploadingOptionId === `${q.id}_${option.id}`}
-                                                                    />
-                                                                    {uploadingOptionId === `${q.id}_${option.id}` ? (
-                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                                                                    ) : (
-                                                                        <Upload className="h-3.5 w-3.5 text-slate-400 hover:text-primary transition-colors" />
-                                                                    )}
-                                                                </label>
+                                                                {user?.role === 'admin' && (
+                                                                    <label className="shrink-0 cursor-pointer">
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            className="hidden"
+                                                                            onChange={(e) => {
+                                                                                const file = e.target.files?.[0];
+                                                                                if (file) handleOptionImageUpload(q, option.id, file);
+                                                                                e.target.value = "";
+                                                                            }}
+                                                                            disabled={uploadingOptionId === `${q.id}_${option.id}`}
+                                                                        />
+                                                                        {uploadingOptionId === `${q.id}_${option.id}` ? (
+                                                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                                                                        ) : (
+                                                                            <Upload className="h-3.5 w-3.5 text-slate-400 hover:text-primary transition-colors" />
+                                                                        )}
+                                                                    </label>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     ))}
@@ -523,40 +562,65 @@ export default function QuestionBankPage() {
                                             )}
 
                                             {/* Source & actions */}
-                                            <div className="flex items-center gap-2 flex-wrap">
+                                            <div className="flex items-center gap-2 flex-wrap mt-2">
                                                 <span className="text-xs text-slate-400">
                                                     Source: {q.source_paper}
                                                 </span>
                                                 <div className="flex-1" />
-                                                {q.training_status === "pending_review" && (
+
+                                                {user?.role === 'admin' ? (
                                                     <>
+                                                        {q.training_status === "pending_review" && (
+                                                            <>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="rounded-lg text-xs h-7"
+                                                                    onClick={() => handleQuickApprove(q.id)}
+                                                                >
+                                                                    <CheckCircle className="h-3 w-3 mr-1" /> Approve
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="rounded-lg text-xs h-7 text-red-600 hover:text-red-700"
+                                                                    onClick={() => handleQuickFlag(q.id)}
+                                                                >
+                                                                    <AlertTriangle className="h-3 w-3 mr-1" /> Flag
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                         <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="rounded-lg text-xs h-7"
-                                                            onClick={() => handleQuickApprove(q.id)}
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="rounded-lg h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-slate-100"
+                                                            onClick={() => setSingleDeleteId(q.id)}
                                                         >
-                                                            <CheckCircle className="h-3 w-3 mr-1" /> Approve
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="rounded-lg text-xs h-7 text-red-600 hover:text-red-700"
-                                                            onClick={() => handleQuickFlag(q.id)}
-                                                        >
-                                                            <AlertTriangle className="h-3 w-3 mr-1" /> Flag
+                                                            <Trash2 className="h-4 w-4" />
                                                         </Button>
                                                     </>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="rounded-lg text-xs h-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                        onClick={() => setStudentFlagId(q.id)}
+                                                    >
+                                                        <AlertTriangle className="h-3 w-3 mr-1" /> Flag Issue
+                                                    </Button>
                                                 )}
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="rounded-lg h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-slate-100"
-                                                    onClick={() => setSingleDeleteId(q.id)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
                                             </div>
+
+                                            {/* Flag Reason Display (Admin Only) */}
+                                            {user?.role === 'admin' && q.training_status === 'flagged' && q.flag_reason && (
+                                                <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
+                                                    <div className="flex items-center gap-1.5 text-red-800 font-medium text-xs mb-1">
+                                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                                        Flagged by {q.flagged_by || 'Student'}
+                                                    </div>
+                                                    <p className="text-sm text-red-700">{q.flag_reason}</p>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Image thumbnail */}
@@ -644,6 +708,35 @@ export default function QuestionBankPage() {
                         <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700 rounded-xl">
                             <Trash2 className="h-4 w-4 mr-2" /> Delete All
                         </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={!!studentFlagId} onOpenChange={(open) => !open && setStudentFlagId(null)}>
+                <AlertDialogContent className="rounded-2xl">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Report an Issue</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Please describe what is wrong with this question (e.g. incorrect answer, typo, unclear image). Admins will review it.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="my-2">
+                        <textarea
+                            className="w-full min-h-[100px] p-3 text-sm rounded-xl border border-slate-200 outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all resize-y"
+                            placeholder="Reason for flagging..."
+                            value={studentFlagReason}
+                            onChange={(e) => setStudentFlagReason(e.target.value)}
+                        />
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                        <Button
+                            onClick={handleStudentFlag}
+                            disabled={!studentFlagReason.trim()}
+                            className="rounded-xl"
+                        >
+                            Submit Report
+                        </Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

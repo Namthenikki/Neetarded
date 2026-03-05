@@ -3,20 +3,20 @@
 import React from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
-import { BottomNav } from "@/components/layout/bottom-nav";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
 
   if (isMobile === undefined) {
-    return null; 
+    return null;
   }
 
   if (isMobile) {
     return (
-      <div className="pb-20 bg-white">
-        <main>{children}</main>
-        <BottomNav />
+      <div className="flex flex-col min-h-screen bg-white">
+        <MobileNav />
+        <main className="flex-1 w-full">{children}</main>
       </div>
     );
   }
