@@ -4,9 +4,11 @@ import React from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { useOfflineSync } from "@/hooks/use-offline-sync";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
+  useOfflineSync();
 
   if (isMobile === undefined) {
     return null;

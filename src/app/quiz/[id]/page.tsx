@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
 
-type QuizStatus = 'loading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
+type QuizStatus = 'loading' | 'preloading' | 'active' | 'submitting' | 'completed' | 'not_found' | 'private' | 'auth_required';
 type AnswerMap = { [questionNumber: number]: string };
 
 interface FlatQuestion extends Question {
@@ -49,6 +49,8 @@ export default function QuizPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [visited, setVisited] = useState<Set<number>>(new Set());
+  const [preloadProgress, setPreloadProgress] = useState({ loaded: 0, total: 0 });
+  const [isRestoredFromLocal, setIsRestoredFromLocal] = useState(false);
 
 
   const flatQuestions: FlatQuestion[] = useMemo(() => {
@@ -106,6 +108,7 @@ export default function QuizPage() {
               setVisited(new Set(savedProgress.visited || []));
               setStarredQuestions(new Set(savedProgress.starred || []));
               setFlaggedQuestions(new Set(savedProgress.flagged || []));
+              setIsRestoredFromLocal(true);
             } catch (e) {
               console.error("Failed to parse saved progress, starting fresh.", e);
               localStorage.removeItem(storageKey);
@@ -132,7 +135,8 @@ export default function QuizPage() {
             ]);
           }
 
-          setStatus('active');
+          // Move to preloading to cache images before timer starts
+          setStatus('preloading');
         } else {
           setStatus('not_found');
         }
@@ -175,6 +179,66 @@ export default function QuizPage() {
       });
     }
   }, [currentQuestionIndex, flatQuestions, status]);
+
+  // Pre-cache images before starting the quiz timer
+  useEffect(() => {
+    if (status !== 'preloading' || !quiz) return;
+
+    // If restoring from localStorage, skip preload (images may already be cached)
+    if (isRestoredFromLocal) {
+      setStatus('active');
+      return;
+    }
+
+    const allImageUrls: string[] = [];
+    const fq = quiz.structure.flatMap((section) =>
+      section.chapters.flatMap((chapter) =>
+        (chapter.questions || []).map((q) => q)
+      )
+    );
+
+    fq.forEach((q) => {
+      if (q.imageUrl) allImageUrls.push(q.imageUrl);
+      q.options?.forEach((opt) => {
+        if (opt.imageUrl) allImageUrls.push(opt.imageUrl);
+      });
+    });
+
+    if (allImageUrls.length === 0) {
+      setStatus('active');
+      return;
+    }
+
+    setPreloadProgress({ loaded: 0, total: allImageUrls.length });
+    let loadedCount = 0;
+
+    const preloadImage = (url: string): Promise<void> => {
+      return new Promise((resolve) => {
+        const img = new window.Image();
+        img.onload = () => {
+          loadedCount++;
+          setPreloadProgress({ loaded: loadedCount, total: allImageUrls.length });
+          resolve();
+        };
+        img.onerror = () => {
+          loadedCount++;
+          setPreloadProgress({ loaded: loadedCount, total: allImageUrls.length });
+          resolve(); // Don't block on failed images
+        };
+        img.src = url;
+      });
+    };
+
+    const preloadAll = async () => {
+      // Race against a 30s timeout
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 30000));
+      const allLoads = Promise.all(allImageUrls.map(preloadImage));
+      await Promise.race([allLoads, timeout]);
+      setStatus('active');
+    };
+
+    preloadAll();
+  }, [status, quiz, isRestoredFromLocal]);
 
 
   const handleSubmit = useCallback(async () => {
@@ -282,10 +346,15 @@ export default function QuizPage() {
 
     } catch (error) {
       console.error("Error submitting attempt:", error);
-      alert("Failed to submit your attempt. Please try again.");
-      setStatus('active');
+      // Offline fallback: queue submission for later
+      const pendingKey = `pending_submission_${user.studentId}_${quizId}`;
+      localStorage.setItem(pendingKey, JSON.stringify(attemptData));
+      localStorage.removeItem(`quiz_progress_${user.studentId}_${quizId}`);
+      toast({ title: "📡 You appear to be offline", description: "Your answers are saved locally and will be submitted automatically when you reconnect." });
+      setStatus('completed');
+      router.push('/dashboard');
     }
-  }, [status, quiz, user, answers, flatQuestions, router, timeLeft, quizId]);
+  }, [status, quiz, user, answers, flatQuestions, router, timeLeft, quizId, toast]);
 
   useEffect(() => {
     if (status !== 'active') return;
@@ -392,6 +461,43 @@ export default function QuizPage() {
 
   if (status === 'loading' || status === 'auth_required') {
     return (<div className="flex items-center justify-center min-h-screen"> <div className="p-4 md:p-8 space-y-6 w-full max-w-4xl"> <div className="flex justify-between items-center"> <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-24" /> </div> <Card className="rounded-2xl"> <CardContent className="p-6"> <Skeleton className="h-6 w-1/4 mb-4" /> <Skeleton className="h-8 w-full mb-6" /> <div className="space-y-4"> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> <Skeleton className="h-12 w-full rounded-xl" /> </div> </CardContent> </Card> <div className="flex justify-between items-center"> <Skeleton className="h-10 w-24" /> <Skeleton className="h-10 w-24" /> </div> </div> </div>);
+  }
+
+  if (status === 'preloading' && quiz) {
+    const percent = preloadProgress.total > 0 ? Math.round((preloadProgress.loaded / preloadProgress.total) * 100) : 0;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-violet-50 via-white to-indigo-50 px-4">
+        <div className="max-w-md w-full text-center space-y-8">
+          <div className="relative mx-auto w-20 h-20">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-violet-500 to-indigo-500 animate-ping opacity-20" />
+            <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-tr from-violet-500 to-indigo-500 shadow-lg">
+              <Loader2 className="h-10 w-10 text-white animate-spin" />
+            </div>
+          </div>
+
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">{quiz.title}</h1>
+            <p className="text-slate-500">Preparing your quiz for the best experience...</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-slate-500 font-medium">Downloading images</span>
+              <span className="text-violet-600 font-bold">{preloadProgress.loaded}/{preloadProgress.total}</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-400">⚡ Images are being cached so your quiz runs smoothly even on slow internet</p>
+          <p className="text-xs text-slate-400">⏱️ Timer will start after download completes</p>
+        </div>
+      </div>
+    );
   }
 
   if (status === 'not_found' || status === 'private') {
