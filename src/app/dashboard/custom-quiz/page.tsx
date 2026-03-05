@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
-import { Loader2, Rocket, CheckCircle, Send, Layers, Upload, FileText, XCircle, ChevronRight } from "lucide-react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Loader2, Rocket, CheckCircle, Send, Layers, Upload, FileText, XCircle, ChevronRight, Hash, Percent, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -57,6 +57,53 @@ export default function CustomQuizPage() {
     const [selectedSources, setSelectedSources] = useState<string[]>([]);
     const [loadingSources, setLoadingSources] = useState(true);
 
+    // Per-source distribution
+    const [distributionMode, setDistributionMode] = useState<'count' | 'percentage'>('count');
+    const [sourceAllocations, setSourceAllocations] = useState<Record<string, number>>({});
+
+    // Per-source available question counts
+    const [sourceQuestionCounts, setSourceQuestionCounts] = useState<Record<string, number>>({});
+    const [loadingCounts, setLoadingCounts] = useState(false);
+
+    useEffect(() => {
+        if (!user || selectedSources.length === 0) {
+            setSourceQuestionCounts({});
+            return;
+        }
+        let cancelled = false;
+        async function fetchCounts() {
+            setLoadingCounts(true);
+            try {
+                const qRef = collection(db, "QuestionBank");
+                const chapterCodes = selectedChapters.map(c => c.chapterCode);
+
+                let snap;
+                if (chapterCodes.length > 0 && chapterCodes.length <= 30) {
+                    snap = await getDocs(query(qRef, where("chapter_code", "in", chapterCodes), where("training_status", "==", "approved")));
+                } else {
+                    snap = await getDocs(query(qRef, where("training_status", "==", "approved")));
+                }
+
+                if (cancelled) return;
+                const counts: Record<string, number> = {};
+                for (const src of selectedSources) counts[src] = 0;
+                snap.docs.forEach(d => {
+                    const src = d.data().source_paper;
+                    if (src && selectedSources.includes(src)) {
+                        counts[src] = (counts[src] || 0) + 1;
+                    }
+                });
+                setSourceQuestionCounts(counts);
+            } catch (e) {
+                console.error("Failed to fetch source counts", e);
+            } finally {
+                if (!cancelled) setLoadingCounts(false);
+            }
+        }
+        fetchCounts();
+        return () => { cancelled = true; };
+    }, [user, selectedSources, selectedChapters]);
+
     useEffect(() => {
         if (!user) return;
         async function fetchSources() {
@@ -79,12 +126,47 @@ export default function CustomQuizPage() {
     }, [user]);
 
     const toggleSource = (source: string) => {
-        setSelectedSources(prev =>
-            prev.includes(source)
-                ? prev.filter(s => s !== source)
-                : [...prev, source]
-        );
+        setSelectedSources(prev => {
+            if (prev.includes(source)) {
+                const next = prev.filter(s => s !== source);
+                setSourceAllocations(a => {
+                    const copy = { ...a };
+                    delete copy[source];
+                    return copy;
+                });
+                return next;
+            }
+            return [...prev, source];
+        });
     };
+
+    const updateAllocation = (source: string, value: number) => {
+        setSourceAllocations(prev => ({ ...prev, [source]: value }));
+    };
+
+    const allocationTotal = useMemo(() => {
+        return selectedSources.reduce((sum, s) => sum + (sourceAllocations[s] || 0), 0);
+    }, [selectedSources, sourceAllocations]);
+
+    const expectedTotal = distributionMode === 'percentage' ? 100 : questionCount;
+    const allocationValid = selectedSources.length === 0 || allocationTotal === expectedTotal;
+
+    const distributeEvenly = useCallback(() => {
+        if (selectedSources.length === 0) return;
+        if (distributionMode === 'percentage') {
+            const each = Math.floor(100 / selectedSources.length);
+            const remainder = 100 - each * selectedSources.length;
+            const alloc: Record<string, number> = {};
+            selectedSources.forEach((s, i) => { alloc[s] = each + (i === 0 ? remainder : 0); });
+            setSourceAllocations(alloc);
+        } else {
+            const each = Math.floor(questionCount / selectedSources.length);
+            const remainder = questionCount - each * selectedSources.length;
+            const alloc: Record<string, number> = {};
+            selectedSources.forEach((s, i) => { alloc[s] = each + (i === 0 ? remainder : 0); });
+            setSourceAllocations(alloc);
+        }
+    }, [selectedSources, distributionMode, questionCount]);
 
     // UI state
     const [isGenerating, setIsGenerating] = useState(false);
@@ -245,9 +327,64 @@ export default function CustomQuizPage() {
                 throw new Error("No questions found in the QuestionBank. Upload and parse a PDF first.");
             }
 
-            // Shuffle and pick
-            const shuffled = allQuestions.sort(() => Math.random() - 0.5);
-            const selected = shuffled.slice(0, Math.min(questionCount, shuffled.length));
+            // Shuffle and pick — with per-source distribution if configured
+            let selected: any[];
+
+            const hasDistribution = selectedSources.length > 0 && Object.keys(sourceAllocations).length > 0 && allocationTotal > 0;
+
+            if (hasDistribution) {
+                // Group questions by source
+                const bySource: Record<string, any[]> = {};
+                for (const q of allQuestions) {
+                    const src = (q as any).source_paper || '__unknown__';
+                    if (!bySource[src]) bySource[src] = [];
+                    bySource[src].push(q);
+                }
+
+                // Shuffle each source pool independently
+                for (const src of Object.keys(bySource)) {
+                    bySource[src].sort(() => Math.random() - 0.5);
+                }
+
+                // Compute target count per source
+                const targets: { source: string; target: number }[] = [];
+                for (const src of selectedSources) {
+                    const val = sourceAllocations[src] || 0;
+                    const target = distributionMode === 'percentage'
+                        ? Math.round(questionCount * val / 100)
+                        : val;
+                    targets.push({ source: src, target });
+                }
+
+                // Pick from each source, track deficit
+                selected = [];
+                let deficit = 0;
+                const remainingPools: any[][] = [];
+
+                for (const { source, target } of targets) {
+                    const pool = bySource[source] || [];
+                    const picked = pool.slice(0, target);
+                    selected.push(...picked);
+                    if (picked.length < target) {
+                        deficit += target - picked.length;
+                    } else if (pool.length > target) {
+                        remainingPools.push(pool.slice(target));
+                    }
+                }
+
+                // Redistribute deficit from remaining pools
+                if (deficit > 0) {
+                    const extraPool = remainingPools.flat().sort(() => Math.random() - 0.5);
+                    selected.push(...extraPool.slice(0, deficit));
+                }
+
+                // Final shuffle to mix sources together
+                selected.sort(() => Math.random() - 0.5);
+            } else {
+                // Original behavior: global shuffle and pick
+                const shuffled = allQuestions.sort(() => Math.random() - 0.5);
+                selected = shuffled.slice(0, Math.min(questionCount, shuffled.length));
+            }
 
             // Build quiz structure grouped by section -> chapter
             const sectionMap = new Map<string, { id: string; name: string; chapters: Map<string, { name: string; binaryCode: string; questions: any[] }> }>();
@@ -736,8 +873,8 @@ export default function CustomQuizPage() {
                                             key={source}
                                             onClick={() => toggleSource(source)}
                                             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${isSelected
-                                                    ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                                                    : "bg-background border-input hover:bg-muted text-foreground"
+                                                ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                                                : "bg-background border-input hover:bg-muted text-foreground"
                                                 }`}
                                         >
                                             {source}
@@ -749,9 +886,88 @@ export default function CustomQuizPage() {
                         ) : (
                             <p className="text-sm text-muted-foreground">No approved sources found.</p>
                         )}
+
+                        {/* Per-source distribution controls */}
                         {selectedSources.length > 0 && (
-                            <div className="mt-3 text-sm text-primary font-medium">
-                                Selected {selectedSources.length} source(s).
+                            <div className="mt-4 p-4 rounded-xl bg-muted/30 border space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm font-semibold">Question Distribution</p>
+                                    <div className="flex items-center gap-1 rounded-lg border p-0.5 bg-background">
+                                        <button
+                                            onClick={() => { setDistributionMode('count'); setSourceAllocations({}); }}
+                                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${distributionMode === 'count'
+                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                        >
+                                            <Hash className="h-3 w-3" /> Count
+                                        </button>
+                                        <button
+                                            onClick={() => { setDistributionMode('percentage'); setSourceAllocations({}); }}
+                                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${distributionMode === 'percentage'
+                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                        >
+                                            <Percent className="h-3 w-3" /> Percentage
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {selectedSources.map(source => (
+                                        <div key={source} className="flex items-center gap-3">
+                                            <span className="text-sm font-medium min-w-[120px] truncate flex-1">
+                                                {source}
+                                                {loadingCounts ? (
+                                                    <span className="ml-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin" /></span>
+                                                ) : sourceQuestionCounts[source] !== undefined ? (
+                                                    <span className={`ml-2 text-xs font-normal ${sourceQuestionCounts[source] === 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                                        ({sourceQuestionCounts[source]} available)
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                            <div className="relative flex items-center">
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    max={distributionMode === 'percentage' ? 100 : questionCount}
+                                                    value={sourceAllocations[source] || ''}
+                                                    onChange={e => updateAllocation(source, parseInt(e.target.value) || 0)}
+                                                    placeholder="0"
+                                                    className="w-24 h-8 text-sm pr-8"
+                                                />
+                                                <span className="absolute right-2.5 text-xs text-muted-foreground pointer-events-none">
+                                                    {distributionMode === 'percentage' ? '%' : 'Q'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Summary bar */}
+                                <div className="flex items-center justify-between pt-2 border-t">
+                                    <div className="flex items-center gap-2">
+                                        {!allocationValid && (
+                                            <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                        )}
+                                        <span className={`text-sm font-medium ${allocationValid ? 'text-emerald-600' : 'text-amber-600'
+                                            }`}>
+                                            Total: {allocationTotal} / {expectedTotal}{distributionMode === 'percentage' ? '%' : ' questions'}
+                                        </span>
+                                        {!allocationValid && (
+                                            <span className="text-xs text-muted-foreground">
+                                                ({allocationTotal > expectedTotal ? 'exceeds' : 'under'} — will auto-adjust)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={distributeEvenly}
+                                        className="text-xs text-primary hover:underline font-medium"
+                                    >
+                                        Distribute Evenly
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
