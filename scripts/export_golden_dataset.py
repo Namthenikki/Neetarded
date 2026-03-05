@@ -79,7 +79,7 @@ def build_dataset(docs: list[dict]) -> tuple[list[dict], dict]:
         "tasks": defaultdict(int),
         "subjects": defaultdict(int),
         "chapters": defaultdict(int),
-        "questions_with_images": 0,
+        "questions_with_option_images": 0,
         "export_timestamp": datetime.now().isoformat(),
     }
 
@@ -94,7 +94,7 @@ def build_dataset(docs: list[dict]) -> tuple[list[dict], dict]:
         subject_name = SUBJECT_NAMES.get(section_id, "Unknown") if section_id else "Unknown"
 
         # ─── Task 1: Question Parsing ───
-        # Input: raw OCR text from the batch, Output: the structured question
+        # Input: raw OCR text from the batch snippet, Output: the structured question
         if raw_ocr and optimized.get("text"):
             entry = {
                 "task": "question_parsing",
@@ -148,23 +148,25 @@ def build_dataset(docs: list[dict]) -> tuple[list[dict], dict]:
             stats["subjects"][subject_name] += 1
             stats["chapters"][f"{subject_name} > {chapter_name}"] += 1
 
-        # ─── Task 3: Image Association ───
-        # Input: question text, Output: whether it has an image
-        if optimized.get("text"):
-            has_image = bool(image_url)
+        # ─── Task 3: Vision Parsing (New in v2) ───
+        # Input: page image + extracted page text, Output: structured question
+        page_image_url = doc.get("page_image_url")
+        extracted_page_text = doc.get("extracted_page_text")
+        
+        if page_image_url and extracted_page_text and optimized.get("text"):
             entry = {
-                "task": "image_association",
+                "task": "vision_parsing",
                 "input": {
-                    "text": optimized.get("text"),
-                    "options": [
-                        {"id": opt.get("id"), "text": opt.get("text")}
-                        for opt in optimized.get("options", [])
-                    ],
-                    "subject": subject_name,
+                    "page_image_url": page_image_url,
+                    "extracted_page_text": extracted_page_text[:4000], # Keep it reasonable
+                    "question_number": optimized.get("questionNumber"),
                 },
                 "output": {
-                    "hasImage": has_image,
-                    "imageUrl": image_url if has_image else None,
+                    "questionNumber": optimized.get("questionNumber"),
+                    "text": optimized.get("text"),
+                    "options": optimized.get("options", []),
+                    "correctOptionId": optimized.get("correctOptionId"),
+                    "explanation": optimized.get("explanation"),
                 },
                 "metadata": {
                     "source_id": doc["_id"],
@@ -172,9 +174,54 @@ def build_dataset(docs: list[dict]) -> tuple[list[dict], dict]:
                 },
             }
             entries.append(entry)
-            stats["tasks"]["image_association"] += 1
-            if has_image:
-                stats["questions_with_images"] += 1
+            stats["tasks"]["vision_parsing"] += 1
+
+        # ─── Task 4: Figure Crop (New in v2) ───
+        # Input: page image + question number, Output: crop bounding box
+        figure_training = doc.get("figure_training")
+        if page_image_url and figure_training:
+            entry = {
+                "task": "figure_crop",
+                "input": {
+                    "page_image_url": page_image_url,
+                    "question_number": optimized.get("questionNumber"),
+                },
+                "output": {
+                    "crop_bbox": figure_training
+                },
+                "metadata": {
+                    "source_id": doc["_id"],
+                    "source_paper": doc.get("source_paper"),
+                },
+            }
+            entries.append(entry)
+            stats["tasks"]["figure_crop"] += 1
+
+        # ─── Task 5: Option Image Detection (Replaces Image Association) ───
+        # Input: question text + options, Output: hasOptionImages boolean
+        has_option_images = doc.get("has_option_images", False)
+        if optimized.get("text"):
+            entry = {
+                "task": "option_image_detection",
+                "input": {
+                    "text": optimized.get("text"),
+                    "options": [
+                        {"id": opt.get("id"), "text": opt.get("text")}
+                        for opt in optimized.get("options", [])
+                    ],
+                },
+                "output": {
+                    "hasOptionImages": has_option_images,
+                },
+                "metadata": {
+                    "source_id": doc["_id"],
+                    "source_paper": doc.get("source_paper"),
+                },
+            }
+            entries.append(entry)
+            stats["tasks"]["option_image_detection"] += 1
+            if has_option_images:
+                stats["questions_with_option_images"] += 1
 
     stats["total_entries"] = len(entries)
     # Convert defaultdicts to regular dicts for JSON serialization
@@ -228,7 +275,7 @@ def save_dataset(entries: list[dict], stats: dict, output_dir: str):
     for subject, count in sorted(stats["subjects"].items()):
         print(f"    {subject}: {count}")
     print(f"  Chapters covered:   {len(stats['chapters'])}")
-    print(f"  Questions w/ images: {stats['questions_with_images']}")
+    print(f"  Questions w/ option images: {stats['questions_with_option_images']}")
     print("=" * 50)
 
 

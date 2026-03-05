@@ -1427,11 +1427,46 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
         opt_img_count = sum(1 for q in all_questions if q.get("hasOptionImages"))
         print(f"  [HYBRID-OPT] {opt_img_count} questions flagged with figure-based options")
 
-    # Clean up internal fields
+    # Upload full page images for dataset training
+    uploaded_page_urls = {}
+    if not dry_run and FIREBASE_STORAGE_BUCKET:
+        from PIL import Image
+        import io
+        print("  [HYBRID] Uploading full page images for Golden Dataset...")
+        safe_source = re.sub(r'[^\w\-]', '_', pdf_path.split('/')[-1])
+        try:
+            bucket = fb_storage.bucket()
+            for pg in question_pages:
+                try:
+                    pil_img = Image.open(io.BytesIO(page_images[pg]))
+                    if pil_img.mode in ("RGBA", "P"):
+                        pil_img = pil_img.convert("RGB")
+                    buf = io.BytesIO()
+                    pil_img.save(buf, format="JPEG", quality=70, optimize=True)
+                    
+                    blob_path = f"question-images/{safe_source}/page_{pg + 1}_full.jpg"
+                    blob = bucket.blob(blob_path)
+                    blob.upload_from_string(buf.getvalue(), content_type="image/jpeg")
+                    blob.make_public()
+                    uploaded_page_urls[pg] = blob.public_url
+                    print(f"    Uploaded page {pg + 1}")
+                except Exception as e:
+                    print(f"    Failed to upload page {pg + 1}: {e}")
+        except Exception as e:
+            print(f"    Failed to access bucket: {e}")
+
+    # Attach page data and clean up internal fields
     for q in all_questions:
+        pg = q.get("_source_page")
+        if pg is not None:
+            if pg in uploaded_page_urls:
+                q["_page_image_url"] = uploaded_page_urls[pg]
+            if pg in page_texts:
+                q["_extracted_page_text"] = page_texts[pg].strip()
+        
         q.pop("_source_page", None)
         q.pop("hasImage", None)
-        q.pop("hasOptionImages", None)
+        # We KEEP hasOptionImages for the golden dataset
 
     return all_questions
 
@@ -1950,11 +1985,15 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
         opt_img_count = sum(1 for q in all_questions if q.get("hasOptionImages") and any(o.get("imageUrl") for o in q.get("options", [])))
         print(f"  [OPTION-IMG] {opt_img_count} questions now have per-option figure images")
 
-    # Clean up internal fields (keep _figure_training for push_to_firestore)
+    # Clean up internal fields AND attach page data for golden dataset
     for q in all_questions:
+        pg = q.get("_source_page")
+        if pg is not None and pg in uploaded_page_urls:
+            q["_page_image_url"] = uploaded_page_urls[pg]
+
         q.pop("_source_page", None)
         q.pop("hasImage", None)
-        q.pop("hasOptionImages", None)
+        # We KEEP hasOptionImages for the golden dataset
         q.pop("figureTopPercent", None)
         q.pop("figureBottomPercent", None)
 
@@ -2146,6 +2185,28 @@ def classify_chapters_with_ai(
 # ──────────────────────────────────────────────
 # FIRESTORE PUSH
 # ──────────────────────────────────────────────
+def extract_question_snippet(q_num: int, full_text: str) -> str:
+    """Extract a snippet of raw text roughly corresponding to this question."""
+    # Matches "1." or "1)" or "Q1" or "Q.1"
+    q_pattern = re.compile(rf'(?:^|\n)\s*(?:#{{1,3}}\s*)?(?:Q\.?\s*)?{q_num}\s*[.)\]:\s]')
+    match = q_pattern.search(full_text)
+    if not match:
+        return full_text[:4000] # fallback
+    
+    start_pos = match.start()
+    
+    # Try to find the next question
+    next_pattern = re.compile(rf'(?:^|\n)\s*(?:#{{1,3}}\s*)?(?:Q\.?\s*)?{q_num + 1}\s*[.)\]:\s]')
+    next_match = next_pattern.search(full_text[start_pos + 10:])
+    
+    if next_match:
+        end_pos = start_pos + 10 + next_match.start()
+    else:
+        # Just grab the next 2500 chars if no next question is found
+        end_pos = start_pos + 4000
+        
+    return full_text[start_pos:end_pos].strip()
+
 def init_firestore() -> firestore.Client:
     """Initialize Firebase Admin SDK and return Firestore client. Safe to call multiple times."""
     if not os.path.exists(SERVICE_ACCOUNT_PATH):
@@ -2263,11 +2324,19 @@ def push_to_firestore(
             "chapter_binary_code": chapter_binary,
             "chapter_name": get_chapter_name(section_id, chapter_binary),
             "source_paper": source_paper,
-            "raw_ocr_input": raw_text,  # Store the full batch text for training
+            "raw_ocr_input": extract_question_snippet(q_num, raw_text) if raw_text else "",
             "optimized_json": optimized_json,
             "image_url": q.get("imageUrl"),
             "training_status": "pending_review", # Overwritten if replacing flagged
         }
+
+        # Add vision parsing and option images data (for Golden Dataset v2)
+        if "_page_image_url" in q:
+            doc_data["page_image_url"] = q["_page_image_url"]
+        if "_extracted_page_text" in q:
+            doc_data["extracted_page_text"] = q["_extracted_page_text"]
+        if "hasOptionImages" in q:
+            doc_data["has_option_images"] = q["hasOptionImages"]
 
         # Add figure training data if present (for crop correction training)
         figure_training = q.pop("_figure_training", None)
