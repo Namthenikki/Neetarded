@@ -170,10 +170,11 @@ export default function CustomQuizPage() {
     const updateChapterAllocation = (source: string, chapterCode: string, value: number) => {
         setSourceChapterAllocations(prev => {
             const currentSourceAlloc = prev[source] || {};
-            return {
-                ...prev,
-                [source]: { ...currentSourceAlloc, [chapterCode]: value }
-            };
+            const updated = { ...currentSourceAlloc, [chapterCode]: value };
+            // Auto-sync source-level allocation from chapter sum
+            const chapterSum = Object.values(updated).reduce((s, v) => s + (v || 0), 0);
+            setSourceAllocations(sa => ({ ...sa, [source]: chapterSum }));
+            return { ...prev, [source]: updated };
         });
     };
 
@@ -191,7 +192,11 @@ export default function CustomQuizPage() {
     }, [selectedSources, sourceAllocations]);
 
     const expectedTotal = distributionMode === 'percentage' ? 100 : questionCount;
-    const allocationValid = selectedSources.length === 0 || allocationTotal === expectedTotal;
+    // When using chapter-level allocations, the total is always valid (user picks exactly what they want)
+    const hasChapterAllocations = Object.values(sourceChapterAllocations).some(
+        chAlloc => Object.values(chAlloc).some(v => v > 0)
+    );
+    const allocationValid = selectedSources.length === 0 || allocationTotal === expectedTotal || hasChapterAllocations;
 
     const distributeEvenly = useCallback(() => {
         if (selectedSources.length === 0) return;
@@ -390,7 +395,7 @@ export default function CustomQuizPage() {
             // Shuffle and pick — with per-source distribution if configured
             let selected: any[];
 
-            const hasDistribution = selectedSources.length > 0 && Object.keys(sourceAllocations).length > 0 && allocationTotal > 0;
+            const hasDistribution = selectedSources.length > 0 && allocationTotal > 0;
 
             if (hasDistribution) {
                 // Group questions by source
@@ -406,68 +411,38 @@ export default function CustomQuizPage() {
                     bySource[src].sort(() => Math.random() - 0.5);
                 }
 
-                // Compute target count per source
-                const targets: { source: string; target: number }[] = [];
-                for (const src of selectedSources) {
-                    const val = sourceAllocations[src] || 0;
-                    const target = distributionMode === 'percentage'
-                        ? Math.round(questionCount * val / 100)
-                        : val;
-                    targets.push({ source: src, target });
-                }
-
-                // Pick from each source, track deficit
                 selected = [];
-                let deficit = 0;
-                const remainingPools: any[][] = [];
 
-                for (const { source, target } of targets) {
-                    const pool = bySource[source] || [];
-                    const pickedForSource: any[] = [];
+                for (const src of selectedSources) {
+                    const pool = bySource[src] || [];
+                    const chAlloc = sourceChapterAllocations[src] || {};
+                    const hasChAlloc = Object.values(chAlloc).some(v => v > 0);
 
-                    // First pick from specific chapter allocations for this source
-                    const chAlloc = sourceChapterAllocations[source] || {};
-                    const byChapter: Record<string, any[]> = {};
-                    const unallocatedPool: any[] = [];
-
-                    for (const q of pool) {
-                        const code = (q as any).chapter_code || '__unknown__';
-                        if (!byChapter[code]) byChapter[code] = [];
-                        byChapter[code].push(q);
-                    }
-
-                    for (const chCode of Object.keys(byChapter)) {
-                        const chPool = byChapter[chCode];
-                        const count = chAlloc[chCode] || 0;
-                        chPool.sort(() => Math.random() - 0.5);
-
-                        if (count > 0) {
-                            pickedForSource.push(...chPool.slice(0, count));
-                            unallocatedPool.push(...chPool.slice(count));
-                        } else {
-                            unallocatedPool.push(...chPool);
+                    if (hasChAlloc) {
+                        // Pick exactly the per-chapter counts — no auto-adjustment
+                        const byChapter: Record<string, any[]> = {};
+                        for (const q of pool) {
+                            const code = (q as any).chapter_code || '__unknown__';
+                            if (!byChapter[code]) byChapter[code] = [];
+                            byChapter[code].push(q);
                         }
+
+                        for (const chCode of Object.keys(chAlloc)) {
+                            const count = chAlloc[chCode] || 0;
+                            if (count > 0 && byChapter[chCode]) {
+                                byChapter[chCode].sort(() => Math.random() - 0.5);
+                                selected.push(...byChapter[chCode].slice(0, count));
+                            }
+                        }
+                    } else {
+                        // Source-level allocation only (no chapter breakdown)
+                        const val = sourceAllocations[src] || 0;
+                        const target = distributionMode === 'percentage'
+                            ? Math.round(questionCount * val / 100)
+                            : val;
+                        pool.sort(() => Math.random() - 0.5);
+                        selected.push(...pool.slice(0, target));
                     }
-
-                    // Then pick remaining target count from the rest of the pool
-                    const remainingTarget = Math.max(0, target - pickedForSource.length);
-                    unallocatedPool.sort(() => Math.random() - 0.5);
-                    const remainingPicked = unallocatedPool.slice(0, remainingTarget);
-                    pickedForSource.push(...remainingPicked);
-
-                    selected.push(...pickedForSource);
-
-                    if (pickedForSource.length < target) {
-                        deficit += target - pickedForSource.length;
-                    } else if (unallocatedPool.length > remainingTarget) {
-                        remainingPools.push(unallocatedPool.slice(remainingTarget));
-                    }
-                }
-
-                // Redistribute deficit from remaining pools
-                if (deficit > 0) {
-                    const extraPool = remainingPools.flat().sort(() => Math.random() - 0.5);
-                    selected.push(...extraPool.slice(0, deficit));
                 }
 
                 // Final shuffle to mix sources together
@@ -509,6 +484,7 @@ export default function CustomQuizPage() {
                         text: optimized.text || '',
                         options: optimized.options || [],
                         correctOptionId: optimized.correctOptionId || 'A',
+                        source: (q as any).source_paper || undefined,
                     };
                     if (optimized.explanation) qData.explanation = optimized.explanation;
                     if (optimized.imageUrl) qData.imageUrl = optimized.imageUrl;
@@ -877,8 +853,8 @@ export default function CustomQuizPage() {
                                                     <button
                                                         onClick={() => { setUploadClassifyMode('auto'); setUploadSelectedChapters([]); }}
                                                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${uploadClassifyMode === 'auto'
-                                                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                                                : 'text-muted-foreground hover:text-foreground'
+                                                            ? 'bg-primary text-primary-foreground shadow-sm'
+                                                            : 'text-muted-foreground hover:text-foreground'
                                                             }`}
                                                     >
                                                         <Sparkles className="h-3 w-3" /> Auto
@@ -886,8 +862,8 @@ export default function CustomQuizPage() {
                                                     <button
                                                         onClick={() => setUploadClassifyMode('manual')}
                                                         className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${uploadClassifyMode === 'manual'
-                                                                ? 'bg-primary text-primary-foreground shadow-sm'
-                                                                : 'text-muted-foreground hover:text-foreground'
+                                                            ? 'bg-primary text-primary-foreground shadow-sm'
+                                                            : 'text-muted-foreground hover:text-foreground'
                                                             }`}
                                                     >
                                                         <ListFilter className="h-3 w-3" /> Manual
@@ -1178,6 +1154,7 @@ export default function CustomQuizPage() {
                                                             onChange={e => updateAllocation(source, parseInt(e.target.value) || 0)}
                                                             placeholder="0"
                                                             className="w-24 h-8 text-sm pr-8"
+                                                            readOnly={Object.values(sourceChapterAllocations[source] || {}).some(v => v > 0)}
                                                         />
                                                         <span className="absolute right-2.5 text-xs text-muted-foreground pointer-events-none">
                                                             {distributionMode === 'percentage' ? '%' : 'Q'}
@@ -1224,11 +1201,11 @@ export default function CustomQuizPage() {
                                         )}
                                         <span className={`text-sm font-medium ${allocationValid ? 'text-emerald-600' : 'text-amber-600'
                                             }`}>
-                                            Total: {allocationTotal} / {expectedTotal}{distributionMode === 'percentage' ? '%' : ' questions'}
+                                            Total: {allocationTotal}{hasChapterAllocations ? '' : ` / ${expectedTotal}`}{distributionMode === 'percentage' ? '%' : ' questions'}
                                         </span>
-                                        {!allocationValid && (
+                                        {hasChapterAllocations && (
                                             <span className="text-xs text-muted-foreground">
-                                                ({allocationTotal > expectedTotal ? 'exceeds' : 'under'} — will auto-adjust)
+                                                (from chapter selections)
                                             </span>
                                         )}
                                     </div>

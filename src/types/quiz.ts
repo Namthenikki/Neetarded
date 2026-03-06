@@ -13,6 +13,7 @@ export interface Question {
   correctOptionId: string;
   explanation?: string;
   imageUrl?: string;
+  source?: string;
 }
 
 export interface Chapter {

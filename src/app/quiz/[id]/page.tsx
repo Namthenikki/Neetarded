@@ -30,6 +30,7 @@ interface FlatQuestion extends Question {
   sectionName: string;
   chapterBinaryCode: string;
   chapterName: string;
+  source?: string;
 }
 
 export default function QuizPage() {
@@ -64,6 +65,7 @@ export default function QuizPage() {
           sectionName: section.name,
           chapterBinaryCode: chapter.binaryCode,
           chapterName: chapter.name,
+          source: q.source,
         }))
       )
     ).sort((a, b) => a.questionNumber - b.questionNumber);
@@ -607,7 +609,15 @@ export default function QuizPage() {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="text-sm font-semibold text-primary"> Question {currentQuestion.questionNumber} of {flatQuestions.length} </p>
-                        <p className="text-sm text-muted-foreground">{currentQuestion.chapterName}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <span>{currentQuestion.chapterName}</span>
+                          {currentQuestion.source && (
+                            <>
+                              <span className="text-muted-foreground/40">•</span>
+                              <span className="text-xs bg-secondary px-1.5 py-0.5 rounded text-muted-foreground">{currentQuestion.source}</span>
+                            </>
+                          )}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" onClick={() => handleToggleFeature(currentQuestion, 'flagged_questions', flaggedQuestions, setFlaggedQuestions)} disabled={isSyncing}>
