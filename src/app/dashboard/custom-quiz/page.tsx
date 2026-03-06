@@ -65,6 +65,11 @@ export default function CustomQuizPage() {
     const [sourceQuestionCounts, setSourceQuestionCounts] = useState<Record<string, number>>({});
     const [loadingCounts, setLoadingCounts] = useState(false);
 
+    // Per-chapter distribution inside source
+    const [sourceChapterAllocations, setSourceChapterAllocations] = useState<Record<string, Record<string, number>>>({});
+    const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
+    const [sourceChapterCounts, setSourceChapterCounts] = useState<Record<string, Record<string, { name: string, count: number, code: string }>>>({});
+
     useEffect(() => {
         if (!user || selectedSources.length === 0) {
             setSourceQuestionCounts({});
@@ -86,14 +91,27 @@ export default function CustomQuizPage() {
 
                 if (cancelled) return;
                 const counts: Record<string, number> = {};
-                for (const src of selectedSources) counts[src] = 0;
+                const chapterCounts: Record<string, Record<string, { name: string, count: number, code: string }>> = {};
+                for (const src of selectedSources) {
+                    counts[src] = 0;
+                    chapterCounts[src] = {};
+                }
                 snap.docs.forEach(d => {
                     const src = d.data().source_paper;
+                    const cCode = d.data().chapter_code;
+                    const cName = d.data().chapter_name || 'Unknown Chapter';
                     if (src && selectedSources.includes(src)) {
                         counts[src] = (counts[src] || 0) + 1;
+                        if (cCode) {
+                            if (!chapterCounts[src][cCode]) {
+                                chapterCounts[src][cCode] = { name: cName, count: 0, code: cCode };
+                            }
+                            chapterCounts[src][cCode].count += 1;
+                        }
                     }
                 });
                 setSourceQuestionCounts(counts);
+                setSourceChapterCounts(chapterCounts);
             } catch (e) {
                 console.error("Failed to fetch source counts", e);
             } finally {
@@ -134,6 +152,11 @@ export default function CustomQuizPage() {
                     delete copy[source];
                     return copy;
                 });
+                setSourceChapterAllocations(a => {
+                    const copy = { ...a };
+                    delete copy[source];
+                    return copy;
+                });
                 return next;
             }
             return [...prev, source];
@@ -142,6 +165,25 @@ export default function CustomQuizPage() {
 
     const updateAllocation = (source: string, value: number) => {
         setSourceAllocations(prev => ({ ...prev, [source]: value }));
+    };
+
+    const updateChapterAllocation = (source: string, chapterCode: string, value: number) => {
+        setSourceChapterAllocations(prev => {
+            const currentSourceAlloc = prev[source] || {};
+            return {
+                ...prev,
+                [source]: { ...currentSourceAlloc, [chapterCode]: value }
+            };
+        });
+    };
+
+    const toggleExpandedSource = (source: string) => {
+        setExpandedSources(prev => {
+            const next = new Set(prev);
+            if (next.has(source)) next.delete(source);
+            else next.add(source);
+            return next;
+        });
     };
 
     const allocationTotal = useMemo(() => {
@@ -363,12 +405,44 @@ export default function CustomQuizPage() {
 
                 for (const { source, target } of targets) {
                     const pool = bySource[source] || [];
-                    const picked = pool.slice(0, target);
-                    selected.push(...picked);
-                    if (picked.length < target) {
-                        deficit += target - picked.length;
-                    } else if (pool.length > target) {
-                        remainingPools.push(pool.slice(target));
+                    const pickedForSource: any[] = [];
+
+                    // First pick from specific chapter allocations for this source
+                    const chAlloc = sourceChapterAllocations[source] || {};
+                    const byChapter: Record<string, any[]> = {};
+                    const unallocatedPool: any[] = [];
+
+                    for (const q of pool) {
+                        const code = (q as any).chapter_code || '__unknown__';
+                        if (!byChapter[code]) byChapter[code] = [];
+                        byChapter[code].push(q);
+                    }
+
+                    for (const chCode of Object.keys(byChapter)) {
+                        const chPool = byChapter[chCode];
+                        const count = chAlloc[chCode] || 0;
+                        chPool.sort(() => Math.random() - 0.5);
+
+                        if (count > 0) {
+                            pickedForSource.push(...chPool.slice(0, count));
+                            unallocatedPool.push(...chPool.slice(count));
+                        } else {
+                            unallocatedPool.push(...chPool);
+                        }
+                    }
+
+                    // Then pick remaining target count from the rest of the pool
+                    const remainingTarget = Math.max(0, target - pickedForSource.length);
+                    unallocatedPool.sort(() => Math.random() - 0.5);
+                    const remainingPicked = unallocatedPool.slice(0, remainingTarget);
+                    pickedForSource.push(...remainingPicked);
+
+                    selected.push(...pickedForSource);
+
+                    if (pickedForSource.length < target) {
+                        deficit += target - pickedForSource.length;
+                    } else if (unallocatedPool.length > remainingTarget) {
+                        remainingPools.push(unallocatedPool.slice(remainingTarget));
                     }
                 }
 
@@ -917,34 +991,73 @@ export default function CustomQuizPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    {selectedSources.map(source => (
-                                        <div key={source} className="flex items-center gap-3">
-                                            <span className="text-sm font-medium min-w-[120px] truncate flex-1">
-                                                {source}
-                                                {loadingCounts ? (
-                                                    <span className="ml-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin" /></span>
-                                                ) : sourceQuestionCounts[source] !== undefined ? (
-                                                    <span className={`ml-2 text-xs font-normal ${sourceQuestionCounts[source] === 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                                        ({sourceQuestionCounts[source]} available)
+                                    {selectedSources.map(source => {
+                                        const isExpanded = expandedSources.has(source);
+                                        const chapters = sourceChapterCounts[source] ? Object.values(sourceChapterCounts[source]) : [];
+                                        return (
+                                            <div key={source} className="border-b border-muted/50 pb-2 last:border-0 last:pb-0">
+                                                <div className="flex items-center gap-3 py-1">
+                                                    <button
+                                                        onClick={() => toggleExpandedSource(source)}
+                                                        className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                                                    >
+                                                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                                                    </button>
+                                                    <span className="text-sm font-medium min-w-[120px] flex-1 truncate cursor-pointer" onClick={() => toggleExpandedSource(source)}>
+                                                        {source}
+                                                        {loadingCounts ? (
+                                                            <span className="ml-2 text-xs text-muted-foreground"><Loader2 className="inline h-3 w-3 animate-spin" /></span>
+                                                        ) : sourceQuestionCounts[source] !== undefined ? (
+                                                            <span className={`ml-2 text-xs font-normal ${sourceQuestionCounts[source] === 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                                                ({sourceQuestionCounts[source]} available)
+                                                            </span>
+                                                        ) : null}
                                                     </span>
-                                                ) : null}
-                                            </span>
-                                            <div className="relative flex items-center">
-                                                <Input
-                                                    type="number"
-                                                    min={0}
-                                                    max={distributionMode === 'percentage' ? 100 : questionCount}
-                                                    value={sourceAllocations[source] || ''}
-                                                    onChange={e => updateAllocation(source, parseInt(e.target.value) || 0)}
-                                                    placeholder="0"
-                                                    className="w-24 h-8 text-sm pr-8"
-                                                />
-                                                <span className="absolute right-2.5 text-xs text-muted-foreground pointer-events-none">
-                                                    {distributionMode === 'percentage' ? '%' : 'Q'}
-                                                </span>
+                                                    <div className="relative flex items-center">
+                                                        <Input
+                                                            type="number"
+                                                            min={0}
+                                                            max={distributionMode === 'percentage' ? 100 : questionCount}
+                                                            value={sourceAllocations[source] || ''}
+                                                            onChange={e => updateAllocation(source, parseInt(e.target.value) || 0)}
+                                                            placeholder="0"
+                                                            className="w-24 h-8 text-sm pr-8"
+                                                        />
+                                                        <span className="absolute right-2.5 text-xs text-muted-foreground pointer-events-none">
+                                                            {distributionMode === 'percentage' ? '%' : 'Q'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && chapters.length > 0 && (
+                                                    <div className="pl-10 pr-2 pb-2 pt-1 space-y-2">
+                                                        {chapters.map(ch => (
+                                                            <div key={ch.code} className="flex items-center gap-2 justify-between bg-background/50 p-2 rounded-lg border text-sm">
+                                                                <div className="flex items-center gap-2 truncate flex-1">
+                                                                    <span className="text-muted-foreground truncate">{ch.name}</span>
+                                                                    <span className="text-xs text-muted-foreground/50 hidden sm:inline">({ch.count} avail)</span>
+                                                                </div>
+                                                                <div className="relative flex items-center shrink-0">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min={0}
+                                                                        max={ch.count}
+                                                                        value={sourceChapterAllocations[source]?.[ch.code] || ''}
+                                                                        onChange={e => updateChapterAllocation(source, ch.code, parseInt(e.target.value) || 0)}
+                                                                        placeholder="0"
+                                                                        className="w-20 h-7 text-xs"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {isExpanded && chapters.length === 0 && !loadingCounts && (
+                                                    <div className="pl-10 pb-2 text-xs text-muted-foreground">No chapters available based on current filters.</div>
+                                                )}
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Summary bar */}

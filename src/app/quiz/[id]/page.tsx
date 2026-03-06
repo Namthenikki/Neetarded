@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { renderMathText } from "@/lib/render-math";
 import { Timer, ArrowLeft, ArrowRight, CheckCircle, ShieldAlert, Loader2, Star, Flag, Grid3x3 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
@@ -617,7 +618,7 @@ export default function QuizPage() {
                         </Button>
                       </div>
                     </div>
-                    <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed whitespace-pre-wrap">{currentQuestion.text}</p>
+                    <p className="font-serif text-xl md:text-2xl font-bold leading-relaxed whitespace-pre-wrap">{renderMathText(currentQuestion.text)}</p>
                     {currentQuestion.imageUrl && (
                       <Dialog>
                         <DialogTrigger asChild>
@@ -654,7 +655,7 @@ export default function QuizPage() {
                             <Image src={option.imageUrl} alt={`Option ${option.id}`} width={400} height={200} className="max-h-32 md:max-h-40 w-auto object-contain rounded bg-white p-1" />
                           </div>
                         ) : (
-                          option.text
+                          renderMathText(option.text)
                         )}
                       </Button>
                     </motion.div>

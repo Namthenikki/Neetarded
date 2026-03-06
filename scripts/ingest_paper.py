@@ -228,6 +228,7 @@ YOUR JOB: Cross-reference the extracted text with the page image. Wherever the t
 
 RULES:
 1. Parse EVERY question visible on this page. Each question starts with a number (e.g. "1.", "1)", "Q1", etc.).
+   BILINGUAL PAPERS: If this page contains questions in MULTIPLE LANGUAGES (e.g., English + Hindi side-by-side, or English on left and Hindi on right), parse ONLY the ENGLISH version of each question. Completely IGNORE the Hindi/other language translation. Each question number should appear exactly ONCE in your output. Identify the English version by the language of the question text — English uses Latin script, Hindi uses Devanagari (हिंदी) script.
 2. For each question, extract: question number, question text, and all 4 options.
 3. Options MUST have ids "A", "B", "C", "D" -- map the FIRST option to "A", second to "B", third to "C", fourth to "D".
 4. Set correctOptionId to "A" as a placeholder -- the correct answer will be injected separately.
@@ -236,21 +237,44 @@ RULES:
 7. If a chapter marker like #PHY #000001 or #3C0-001001 appears, record the sectionId and chapterBinaryCode. If no marker, set both to null.
 8. Set explanation to null.
 9. Format all mathematical powers and exponents using true Unicode superscripts (e.g., "x²" not "x^2", "10⁻³" not "10^-3", "m/s²" not "m/s^2").
-10. Format Chemistry ions, formulas with proper Unicode sub/superscripts (e.g., "Ca²⁺", "SO₄²⁻", "H₂O", "[Co(NH₃)₃Cl₃]").
-11. Format scientific units with proper Unicode superscripts (e.g., "mol L⁻¹", "S cm² mol⁻¹").
-12. Format vector notation properly: use proper symbols like B̄, î, ĵ, k̂, →, etc. from the image.
-13. EXTREMELY IMPORTANT for "Match List..." or "Match the Column" questions: Insert double newlines between List I and List II headings.
-14. Format mathematical and physical variables with subscripts using Unicode subscripts (e.g., "Eₙ" not "En", "rₙ" not "rn").
+10. NEVER USE LaTeX COMMANDS. Do NOT output \\frac, \\sqrt, \\text, \\left, \\right, \\cdot, \\times, \\vec, \\hat, \\cos, \\sin, or ANY LaTeX syntax. Instead:
+   - Fractions: use "/" → "i₀/6" NOT "\\frac{i_0}{6}", "3T/2" NOT "\\frac{3T}{2}"
+   - Square roots: use "√" → "√2" NOT "\\sqrt{2}", "2√3" NOT "2\\sqrt{3}"
+   - Subscripts: use Unicode → "i₀" NOT "i_0", "μ₀" NOT "\\mu_0"
+   - Greek letters: use actual Unicode → "μ₀" NOT "\\mu_0", "π" NOT "\\pi", "ε₀" NOT "\\epsilon_0"
+   - Multiplication: use "×" or "·" → NOT "\\times" or "\\cdot"
+   - Vectors/Hats: use "Ē" NOT "\\vec{E}", "î" NOT "\\hat{i}", "k̂" NOT "\\hat{k}"
+   - Functions/Text: use standard text "cos" NOT "\\cos", " N/C" NOT "\\text{N/C}"
+11. NEVER INCLUDE OPTIONS IN THE QUESTION TEXT. The `text` field MUST END exactly BEFORE the first option begins. Do NOT include the numbered choices (e.g., "(1) ... (2) ...") inside the `text`. They belong ONLY in the `options` array.
+12. Format Chemistry ions, formulas with proper Unicode sub/superscripts (e.g., "Ca²⁺", "SO₄²⁻", "H₂O", "[Co(NH₃)₃Cl₃]").
+13. Format scientific units with proper Unicode superscripts (e.g., "mol L⁻¹", "S cm² mol⁻¹").
+14. Format vector notation properly: use proper symbols like B̄, î, ĵ, k̂, →, etc. from the image.
+15. EXTREMELY IMPORTANT for "Match List..." or "Match the Column" questions: Insert double newlines between List I and List II headings.
+16. Format mathematical and physical variables with subscripts using Unicode subscripts (e.g., "Eₙ" not "En", "rₙ" not "rn").
 15. CAUTION for "Multiple Statement" questions: Include ALL statement text in the `text` field. Options should be the final 4 choices only.
 16. EXTREMELY IMPORTANT for "Statement I / Statement II" and sequential statements (A., B., C.): Insert double newlines between each statement.
 17. NEVER split a single numbered question into multiple questions.
 18. CROSS-PAGE QUESTIONS: If a question clearly continues from a previous page (e.g., the page starts with continuation text, a figure, or options without a new question number), include it as a question entry with the SAME question number it belongs to. Use the question number visible in the continuation or the last question number from context. The text should contain ONLY the continuation part from THIS page.
-19. FIGURE-BASED OPTIONS: Set `hasOptionImages` to true ONLY when the options are PURELY graphical with ZERO readable text — for example, graphs with plotted curves, circuit diagrams, chemical structure drawings, or molecular orbital diagrams. In ALL other cases, set `hasOptionImages` to false and PARSE the option text:
-   - If options contain text like "Helix on +ve side of z-axis" → parse as text, hasOptionImages=false
-   - If options contain math formulas like "2πm/qB" → parse using Unicode (2πm/qB), hasOptionImages=false
-   - If options contain short labels like "circle in xy plane" → parse as text, hasOptionImages=false
-   - If options have text + a small diagram beside it → parse the text, hasOptionImages=false
-   - ONLY if the option IS a graph/circuit/compound structure with no text at all → hasOptionImages=true, set each option text to ""
+19. QUESTION FIGURES: Set `hasImage` to true when a question has an associated figure, diagram, or drawing ON THE PAGE that is essential to understanding the question. This includes:
+   - Circuit diagrams (resistors, batteries, capacitors, etc.)
+   - Physics diagrams (ray diagrams, force diagrams, motion paths, etc.)
+   - Graphs and plots (V-I curves, displacement-time, etc.)
+   - Chemical structures shown IN the question area (not in options)
+   - Biological diagrams (cell structures, anatomical diagrams, etc.)
+   - Any drawn figure referenced by "as shown in the figure" or "shown in the diagram"
+   Set `hasImage` to false ONLY if the question is purely textual with no associated figure.
+20. FIGURE-BASED OPTIONS: Set `hasOptionImages` to true when the options are primarily DRAWN/GRAPHICAL content that cannot be meaningfully represented as text. This includes:
+   - Chemical structure drawings (benzene rings, molecular structures, even if they have labels like OH, CH₃, COCH₃)
+   - Graphs with plotted curves or data
+   - Circuit diagrams as options
+   - Molecular orbital diagrams
+   - Any drawn/sketched figures as answer choices
+   When `hasOptionImages` is true, set each option text to a brief description like "Structure A" or "".
+   Set `hasOptionImages` to false and PARSE option text when:
+   - Options are text like "Helix on +ve side of z-axis"
+   - Options are math formulas like "2πm/qB" → parse using Unicode
+   - Options are short text labels like "circle in xy plane"
+   - Options have text + a small icon/symbol beside it → parse the text
 
 OUTPUT FORMAT -- Return ONLY a JSON array of objects, nothing else:
 [
@@ -266,6 +290,7 @@ OUTPUT FORMAT -- Return ONLY a JSON array of objects, nothing else:
     "correctOptionId": "A",
     "explanation": null,
     "imageUrl": null,
+    "hasImage": false,
     "hasOptionImages": false,
     "sectionId": "<e.g. PHY, BIO, CHE, 1B0, 2P0, 3C0, or null>",
     "chapterBinaryCode": "<6-digit binary or null>"
@@ -718,6 +743,34 @@ def parse_answer_key_deterministic(answer_key_text: str) -> dict[int, str]:
     i = 0
     current_q_numbers: list[int] = []
 
+    # --- Format 1a: "N. (X)" inline format (e.g., "1. (2)", "136. (1)") ---
+    # Common in PW/coaching institute PDFs
+    inline_pattern = re.compile(r'^\s*(\d{1,3})\.\s*\(([1-4])\)\s*$')
+    for line in lines:
+        m = inline_pattern.match(line.strip())
+        if m:
+            q_num = int(m.group(1))
+            ans_num = int(m.group(2))
+            answers[q_num] = num_to_letter.get(ans_num, "A")
+
+    # --- Format 1b: Split-line format where number and answer are on separate lines ---
+    # PyMuPDF extracts two-column answer key pages as: "1.\n(2)\n2.\n(1)\n..."
+    qnum_pattern = re.compile(r'^\s*(\d{1,3})\.\s*$')
+    ans_pattern = re.compile(r'^\s*\(([1-4])\)\s*$')
+    for j in range(len(lines) - 1):
+        qm = qnum_pattern.match(lines[j].strip())
+        am = ans_pattern.match(lines[j + 1].strip())
+        if qm and am:
+            q_num = int(qm.group(1))
+            ans_num = int(am.group(1))
+            if q_num not in answers:  # Don't overwrite inline matches
+                answers[q_num] = num_to_letter.get(ans_num, "A")
+
+    if answers:
+        print(f"  [DETERMINISTIC] Parsed {len(answers)} answers (inline + split-line format)")
+        return answers
+
+    # --- Format 2: Q./A. block format (original NTA-style) ---
     while i < len(lines):
         line = lines[i].strip()
 
@@ -936,6 +989,7 @@ def parse_pages_with_hybrid_vision(
     client: OpenAI,
     pdf_path: str,
     questions_text: str,
+    dry_run: bool = False,
 ) -> list[dict]:
     """
     Parse a normal (non-scanned) PDF using hybrid vision+text mode.
@@ -953,10 +1007,12 @@ def parse_pages_with_hybrid_vision(
     q_pattern = re.compile(r'(?:^|\n)\s*(?:#{1,3}\s*)?(?:Q\.?\s*)?\d{1,3}\s*[.)\]:\s]', re.MULTILINE)
 
     # Also detect answer key pages to skip them
+    # IMPORTANT: These patterns must be STRICT (standalone headings only)
+    # to avoid false positives on question text like "Choose the correct answer"
     answer_key_patterns = [
-        re.compile(r'(?i)ANSWER\s+KEYS?'),
-        re.compile(r'(?i)CORRECT\s+ANSWERS?'),
-        re.compile(r'(?i)ANSWERS?\s+AND\s+SOLUTIONS?'),
+        re.compile(r'(?:^|\n)\s*ANSWER\s+KEYS?\s*(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:^|\n)\s*CORRECT\s+ANSWERS?\s*(?:\n|$)', re.IGNORECASE),
+        re.compile(r'(?:^|\n)\s*ANSWERS?\s+AND\s+SOLUTIONS?\s*(?:\n|$)', re.IGNORECASE),
     ]
 
     # Extract per-page text for filtering and as context
@@ -968,10 +1024,25 @@ def parse_pages_with_hybrid_vision(
         text = page.get_text("text")
         page_texts[page_num] = text
 
-        # Skip pages that look like answer keys
+        # Skip pages that are ONLY answer keys:
+        # Must match a heading pattern AND page must be mostly answer-key-like
+        # (short lines with number-answer pairs, not full question text)
         is_answer_key = any(p.search(text) for p in answer_key_patterns)
         if is_answer_key:
-            continue
+            # Verify it's a real answer key page, not a question page with
+            # "Choose the correct answer" in the question text.
+            # Real answer key pages have many short lines like "1. (2)" or "Q. / A." blocks
+            # or split-line format: "46.\n(2)\n47.\n(2)" where number and answer are separate
+            lines = [l.strip() for l in text.split('\n') if l.strip()]
+            ak_line_pattern = re.compile(r'^\d{1,3}\.?\s*\(?[1-4ABCD]\)?\s*$')
+            # Also match standalone answer values like "(2)" or "(A)" on their own line
+            ak_answer_only = re.compile(r'^\(?[1-4ABCD]\)$')
+            # And standalone question numbers like "46." on their own line
+            ak_qnum_only = re.compile(r'^\d{1,3}\.\s*$')
+            ak_lines = sum(1 for l in lines if ak_line_pattern.match(l) or ak_answer_only.match(l) or ak_qnum_only.match(l))
+            # If >30% of non-empty lines are answer-key lines, it's truly an AK page
+            if len(lines) > 0 and ak_lines / len(lines) > 0.3:
+                continue
 
         # Check if this page has question markers
         if q_pattern.search(text) and len(text.strip()) > 100:
@@ -1435,6 +1506,7 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
         print("  [HYBRID] Uploading full page images for Golden Dataset...")
         safe_source = re.sub(r'[^\w\-]', '_', pdf_path.split('/')[-1])
         try:
+            init_firestore()
             bucket = fb_storage.bucket()
             for pg in question_pages:
                 try:
@@ -1454,6 +1526,135 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
                     print(f"    Failed to upload page {pg + 1}: {e}")
         except Exception as e:
             print(f"    Failed to access bucket: {e}")
+
+    # ── FIGURE CROPPING: Use GPT to detect and crop figures for questions with hasImage ──
+    questions_with_images = [q for q in all_questions if q.get("hasImage")]
+    if questions_with_images:
+        from PIL import Image
+        import io
+
+        print(f"  [FIGURE] {len(questions_with_images)} questions have figures, cropping...")
+
+        FIGURE_BBOX_PROMPT = """You are looking at an exam page. I need you to find the figure/diagram/graph associated with Question {q_num}.
+
+Return the EXACT bounding box of JUST the figure/diagram (NOT the question text, NOT the options, ONLY the drawn figure/graph/diagram itself).
+
+Return a JSON object with these 4 values as percentages of the page dimensions:
+- leftPercent: distance from left edge (0-100)
+- topPercent: distance from top edge (0-100)  
+- rightPercent: distance from left edge to the right side of figure (0-100)
+- bottomPercent: distance from top edge to the bottom of figure (0-100)
+
+Example: {{"leftPercent": 5, "topPercent": 35, "rightPercent": 45, "bottomPercent": 60}}
+
+CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra text. If no figure is found, return {{"error": true}}."""
+
+        safe_source = re.sub(r'[^\w\-]', '_', os.path.splitext(os.path.basename(pdf_path))[0])
+
+        for idx, q in enumerate(questions_with_images):
+            source_page = q.get("_source_page", 0)
+            q_num = q["questionNumber"]
+
+            if source_page not in page_images:
+                continue
+
+            b64_img = base64.b64encode(page_images[source_page]).decode("utf-8")
+            print(f"    Q{q_num} (page {source_page + 1})...", end=" ", flush=True)
+
+            try:
+                resp = client.chat.completions.create(
+                    model=VISION_MODEL,
+                    messages=[
+                        {"role": "system", "content": FIGURE_BBOX_PROMPT.format(q_num=q_num)},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": f"Find the figure for Question {q_num} on this page."},
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "high"}}
+                            ]
+                        }
+                    ],
+                    temperature=0.0,
+                    max_tokens=256,
+                )
+
+                raw = resp.choices[0].message.content.strip()
+                if raw.startswith("```"):
+                    lines_raw = raw.split("\n")
+                    lines_raw = [l for l in lines_raw if not l.strip().startswith("```")]
+                    raw = "\n".join(lines_raw)
+
+                bbox = json.loads(raw)
+
+                if bbox.get("error"):
+                    print("no figure found")
+                    continue
+
+                # Crop the page image to the bounding box
+                pil_img = Image.open(io.BytesIO(page_images[source_page]))
+                w, h = pil_img.size
+
+                left = max(0, int(w * bbox["leftPercent"] / 100) - 10)
+                top = max(0, int(h * bbox["topPercent"] / 100) - 10)
+                right = min(w, int(w * bbox["rightPercent"] / 100) + 10)
+                bottom = min(h, int(h * bbox["bottomPercent"] / 100) + 10)
+
+                cropped = pil_img.crop((left, top, right, bottom))
+                buf = io.BytesIO()
+                cropped.save(buf, format="PNG")
+                img_to_upload = buf.getvalue()
+
+                print(f"cropped ({right-left}x{bottom-top}px)", end=" ")
+
+                # Upload or save
+                if not dry_run and FIREBASE_STORAGE_BUCKET:
+                    try:
+                        init_firestore()
+                        bucket = fb_storage.bucket()
+                        blob_path = f"question-images/{safe_source}/q{q_num}_fig.png"
+                        blob = bucket.blob(blob_path)
+                        blob.upload_from_string(img_to_upload, content_type="image/png")
+                        blob.make_public()
+                        q["imageUrl"] = blob.public_url
+                        print("-> uploaded")
+                    except Exception as e:
+                        # Fallback: save locally if Firebase fails
+                        img_dir = pdf_path.rsplit(".", 1)[0] + "_images"
+                        os.makedirs(img_dir, exist_ok=True)
+                        local_path = os.path.join(img_dir, f"q{q_num}_fig.png")
+                        with open(local_path, "wb") as f_img:
+                            f_img.write(img_to_upload)
+                        q["imageUrl"] = local_path
+                        print(f"-> saved locally (Firebase: {e})")
+                else:
+                    img_dir = pdf_path.rsplit(".", 1)[0] + "_images"
+                    os.makedirs(img_dir, exist_ok=True)
+                    local_path = os.path.join(img_dir, f"q{q_num}_fig.png")
+                    with open(local_path, "wb") as f_img:
+                        f_img.write(img_to_upload)
+                    q["imageUrl"] = local_path
+                    print("-> saved locally")
+
+                # Store figure training metadata on the question
+                q["_figure_training"] = {
+                    "source_page_url": uploaded_page_urls.get(source_page),
+                    "source_page_number": source_page + 1,
+                    "ai_crop_bbox": {"left": left, "top": top, "right": right, "bottom": bottom},
+                    "page_width": w,
+                    "page_height": h,
+                    "ai_figure_url": q.get("imageUrl"),
+                    "human_crop_bbox": None,
+                    "human_figure_url": None,
+                    "correction_type": "none",
+                }
+
+            except Exception as e:
+                print(f"ERROR: {e}")
+
+            time.sleep(RATE_LIMIT_DELAY)
+
+        img_count = sum(1 for q in all_questions if q.get("imageUrl"))
+        print(f"  [FIGURE] {img_count} questions now have cropped figure images")
 
     # Attach page data and clean up internal fields
     for q in all_questions:
@@ -1727,6 +1928,7 @@ def parse_scanned_pages_with_vision(
         uploaded_page_urls = {}  # page_num -> public_url
         if not dry_run and FIREBASE_STORAGE_BUCKET:
             pages_needed = set(q.get("_source_page", 0) for q in questions_with_images)
+            init_firestore()
             bucket = fb_storage.bucket()
             for pg in pages_needed:
                 if pg in page_images:
@@ -2122,11 +2324,12 @@ def classify_chapters_with_ai(
         batch = needs_classification[batch_start:batch_start + batch_size]
         batch_questions = []
         for idx, q in batch:
+            q_text = q.get("text") or ""
             batch_questions.append({
                 "questionNumber": q["questionNumber"],
-                "text": q["text"][:300],  # Truncate to save tokens
+                "text": q_text[:300],  # Truncate to save tokens
                 "sectionId": q.get("sectionId"),  # May help if subject is known
-                "options": [opt["text"][:80] for opt in q.get("options", [])]
+                "options": [opt.get("text", "")[:80] for opt in q.get("options", [])]
             })
 
         prompt = CLASSIFICATION_PROMPT.format(
@@ -2568,7 +2771,7 @@ def main():
             print()
 
             print("[4/5] Parsing pages with hybrid vision+text...")
-            hybrid_result = parse_pages_with_hybrid_vision(client, args.pdf_path, questions_text)
+            hybrid_result = parse_pages_with_hybrid_vision(client, args.pdf_path, questions_text, dry_run=args.dry_run)
 
             if hybrid_result is None:
                 # Fallback: no question pages detected, use text-only
