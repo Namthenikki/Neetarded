@@ -2271,11 +2271,18 @@ CLASSIFICATION_PROMPT = """You are a NEET exam chapter classifier. Given a quest
 The NEET syllabus has 3 subjects. Each subject has chapters with a unique binary code.
 You MUST return ONLY valid JSON — no markdown, no text.
 
-SUBJECTS AND CHAPTERS:
+{constraint_section}SUBJECTS AND CHAPTERS:
 {chapters_json}
 
 For each question below, return its sectionId and chapterBinaryCode.
-Use the question content and subject context (if known) to determine the chapter.
+Use the question content, options, and subject context to determine the correct chapter.
+
+IMPORTANT CLASSIFICATION RULES:
+- "Amines" questions (basicity of amines, preparation of amines, reactions of amines) belong to the Amines chapter, NOT Organic Chemistry – Isomerism or IUPAC Nomenclature.
+- "Aldehydes, Ketones and Carboxylic Acids" questions (aldol condensation, Cannizzaro reaction, carboxylic acid acidity) belong to that specific chapter.
+- "Biomolecules" questions (proteins, enzymes, carbohydrates, nucleic acids) belong to Biomolecules.
+- Do NOT classify organic chemistry reaction questions into general chapters like Isomerism, GOC, or IUPAC Nomenclature unless the question is specifically about those topics.
+- Chemical Kinetics questions must be about rate of reaction, rate constant, order of reaction — NOT general chemistry.
 
 QUESTIONS:
 {questions_json}
@@ -2288,10 +2295,28 @@ Return a JSON array of objects, one per question, in the same order:
 CRITICAL: Return ONLY the JSON array. No markdown code fences, no explanations."""
 
 
+def detect_chapter_hints_from_text(full_text: str) -> list[tuple[str, str]]:
+    """
+    Scan the extracted PDF text for chapter name keywords to detect
+    which chapters the PDF likely contains. Returns a list of
+    (sectionId, binaryCode) tuples.
+    """
+    text_lower = full_text.lower()
+    found = []
+    for (sid, bcode), name in CHAPTER_LOOKUP.items():
+        # Match chapter name keywords in the text (case insensitive)
+        # Use word boundary matching for longer names to avoid false positives
+        name_lower = name.lower()
+        if len(name_lower) >= 6 and name_lower in text_lower:
+            found.append((sid, bcode))
+    return found
+
+
 def classify_chapters_with_ai(
     client: OpenAI,
     questions: list[dict],
-    batch_size: int = 20
+    batch_size: int = 20,
+    allowed_chapters: list[tuple[str, str]] | None = None,
 ) -> list[dict]:
     """
     Classify questions into chapters using AI.
@@ -2299,13 +2324,27 @@ def classify_chapters_with_ai(
     """
     # Build the chapters reference JSON
     chapters_ref = []
-    for (sid, bcode), name in CHAPTER_LOOKUP.items():
-        chapters_ref.append({
-            "sectionId": sid,
-            "sectionName": SUBJECT_NAMES.get(sid, sid),
-            "binaryCode": bcode,
-            "chapterName": name
-        })
+    if allowed_chapters:
+        # Only include the allowed chapters
+        for sid, bcode in allowed_chapters:
+            name = CHAPTER_LOOKUP.get((sid, bcode))
+            if name:
+                chapters_ref.append({
+                    "sectionId": sid,
+                    "sectionName": SUBJECT_NAMES.get(sid, sid),
+                    "binaryCode": bcode,
+                    "chapterName": name
+                })
+        print(f"  [CLASSIFY] Constrained to {len(chapters_ref)} allowed chapters")
+    else:
+        # Full syllabus (fallback)
+        for (sid, bcode), name in CHAPTER_LOOKUP.items():
+            chapters_ref.append({
+                "sectionId": sid,
+                "sectionName": SUBJECT_NAMES.get(sid, sid),
+                "binaryCode": bcode,
+                "chapterName": name
+            })
 
     # Find questions needing classification
     needs_classification = [
@@ -2332,7 +2371,18 @@ def classify_chapters_with_ai(
                 "options": [opt.get("text", "")[:80] for opt in q.get("options", [])]
             })
 
+        # Build the constraint section for the prompt
+        constraint_section = ""
+        if allowed_chapters:
+            allowed_names = [CHAPTER_LOOKUP.get((s, b), f"{s}-{b}") for s, b in allowed_chapters]
+            constraint_section = (
+                "IMPORTANT CONSTRAINT: This PDF ONLY contains questions from these specific chapters:\n"
+                + "\n".join(f"  - {name}" for name in allowed_names)
+                + "\nYou MUST classify every question into one of these chapters ONLY. Do NOT use any other chapter.\n\n"
+            )
+
         prompt = CLASSIFICATION_PROMPT.format(
+            constraint_section=constraint_section,
             chapters_json=json.dumps(chapters_ref, indent=2),
             questions_json=json.dumps(batch_questions, indent=2)
         )
@@ -2632,6 +2682,11 @@ def main():
         action="store_true",
         help="Use text-only batch parsing (no vision). Faster/cheaper but misses inline formula images."
     )
+    parser.add_argument(
+        "--chapters", "-c",
+        default="",
+        help="Comma-separated list of chapter names to constrain classification (e.g. 'Amines,Biomolecules,Aldehydes Ketones and Carboxylic Acids')"
+    )
     args = parser.parse_args()
 
     # Validate
@@ -2881,7 +2936,34 @@ def main():
 
     # Step 4.7: AI Chapter Classification
     print("[4.7/5] Classifying questions into chapters with AI...")
-    all_questions = classify_chapters_with_ai(client, all_questions)
+
+    # Detect chapter hints from PDF text
+    chapter_hints = None
+    if hasattr(args, 'chapters') and args.chapters:
+        # Parse --chapters "Amines,Biomolecules,Aldehydes Ketones and Carboxylic Acids"
+        requested_names = [c.strip() for c in args.chapters.split(",") if c.strip()]
+        chapter_hints = []
+        for (sid, bcode), name in CHAPTER_LOOKUP.items():
+            if any(rn.lower() in name.lower() or name.lower() in rn.lower() for rn in requested_names):
+                chapter_hints.append((sid, bcode))
+        if chapter_hints:
+            print(f"  [CLASSIFY] User specified {len(chapter_hints)} chapter(s) via --chapters")
+        else:
+            print(f"  [CLASSIFY] WARNING: --chapters '{args.chapters}' matched no known chapters, using auto-detection")
+            chapter_hints = None
+
+    if not chapter_hints:
+        # Auto-detect from PDF text
+        training_text_for_hints = ocr_text if is_scanned and ocr_text else full_text
+        chapter_hints = detect_chapter_hints_from_text(training_text_for_hints)
+        if chapter_hints:
+            hint_names = [CHAPTER_LOOKUP.get(ch, "?") for ch in chapter_hints]
+            print(f"  [CLASSIFY] Auto-detected {len(chapter_hints)} chapter hint(s): {', '.join(hint_names)}")
+        else:
+            print(f"  [CLASSIFY] No chapter hints detected, using full syllabus")
+            chapter_hints = None
+
+    all_questions = classify_chapters_with_ai(client, all_questions, allowed_chapters=chapter_hints)
     print()
 
     # Deduplicate by (questionNumber, first 80 chars of text)

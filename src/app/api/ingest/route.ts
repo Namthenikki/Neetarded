@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
         const source = formData.get("source") as string;
         const dryRun = formData.get("dryRun") === "true";
         const noImages = formData.get("noImages") === "true";
+        const chapters = formData.get("chapters") as string | null;
 
         if (!file || !source) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
         const args = [scriptPath, tempPath, "--source", source];
         if (dryRun) args.push("--dry-run");
         if (noImages) args.push("--no-images");
+        if (chapters && chapters.trim()) args.push("--chapters", chapters.trim());
 
         // Create SSE stream
         const stream = new ReadableStream({

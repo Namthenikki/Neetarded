@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Loader2, Rocket, CheckCircle, Send, Layers, Upload, FileText, XCircle, ChevronRight, Hash, Percent, AlertTriangle } from "lucide-react";
+import { Loader2, Rocket, CheckCircle, Send, Layers, Upload, FileText, XCircle, ChevronRight, ChevronDown, Hash, Percent, AlertTriangle, Sparkles, ListFilter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -230,6 +230,24 @@ export default function CustomQuizPage() {
     const [uploadProgress, setUploadProgress] = useState({ percent: 0, text: "" });
     const [uploadResult, setUploadResult] = useState<{ success: boolean; count: number } | null>(null);
     const uploadRef = useRef<HTMLInputElement>(null);
+
+    // Upload chapter classification
+    const [uploadClassifyMode, setUploadClassifyMode] = useState<'auto' | 'manual'>('auto');
+    const [uploadSelectedChapters, setUploadSelectedChapters] = useState<string[]>([]);
+    const [showChapterDropdown, setShowChapterDropdown] = useState(false);
+    const [expandedUploadSubjects, setExpandedUploadSubjects] = useState<Set<string>>(new Set());
+    const chapterDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (chapterDropdownRef.current && !chapterDropdownRef.current.contains(e.target as Node)) {
+                setShowChapterDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     const toggleSubject = (subjectId: string) => {
         setExpandedSubjects(prev => {
@@ -635,6 +653,9 @@ export default function CustomQuizPage() {
             formData.append("source", uploadSource.trim());
             formData.append("dryRun", "false");
             formData.append("noImages", "false");
+            if (uploadClassifyMode === 'manual' && uploadSelectedChapters.length > 0) {
+                formData.append("chapters", uploadSelectedChapters.join(","));
+            }
 
             const res = await fetch("/api/ingest", { method: "POST", body: formData });
             if (!res.body) throw new Error("No response body");
@@ -820,28 +841,163 @@ export default function CustomQuizPage() {
                                 )}
 
                                 {uploadFile && !isUploading && (
-                                    <div className="flex gap-3 items-end">
-                                        <div className="flex-1">
-                                            <Label className="text-xs">Source Name</Label>
-                                            <Input
-                                                value={uploadSource}
-                                                onChange={(e) => setUploadSource(e.target.value)}
-                                                placeholder="e.g. NEET 2024"
-                                                disabled={isUploading}
+                                    <div className="space-y-3">
+                                        <div className="flex gap-3 items-end">
+                                            <div className="flex-1">
+                                                <Label className="text-xs">Source Name</Label>
+                                                <Input
+                                                    value={uploadSource}
+                                                    onChange={(e) => setUploadSource(e.target.value)}
+                                                    placeholder="e.g. NEET 2024"
+                                                    disabled={isUploading}
+                                                    className="rounded-lg h-9"
+                                                />
+                                            </div>
+                                            <Button
+                                                onClick={handleUploadPdf}
+                                                disabled={isUploading || !uploadSource.trim()}
                                                 className="rounded-lg h-9"
-                                            />
+                                            >
+                                                {isUploading ? (
+                                                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Parsing...</>
+                                                ) : (
+                                                    <><Upload className="h-4 w-4 mr-1" /> Upload & Parse</>
+                                                )}
+                                            </Button>
                                         </div>
-                                        <Button
-                                            onClick={handleUploadPdf}
-                                            disabled={isUploading || !uploadSource.trim()}
-                                            className="rounded-lg h-9"
-                                        >
-                                            {isUploading ? (
-                                                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Parsing...</>
+
+                                        {/* Chapter Classification Mode */}
+                                        <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-semibold flex items-center gap-1.5">
+                                                    <ListFilter className="h-3.5 w-3.5" />
+                                                    Chapter Classification
+                                                </p>
+                                                <div className="flex items-center gap-1 rounded-lg border p-0.5 bg-background">
+                                                    <button
+                                                        onClick={() => { setUploadClassifyMode('auto'); setUploadSelectedChapters([]); }}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${uploadClassifyMode === 'auto'
+                                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                                : 'text-muted-foreground hover:text-foreground'
+                                                            }`}
+                                                    >
+                                                        <Sparkles className="h-3 w-3" /> Auto
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setUploadClassifyMode('manual')}
+                                                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${uploadClassifyMode === 'manual'
+                                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                                : 'text-muted-foreground hover:text-foreground'
+                                                            }`}
+                                                    >
+                                                        <ListFilter className="h-3 w-3" /> Manual
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {uploadClassifyMode === 'auto' ? (
+                                                <p className="text-xs text-muted-foreground">
+                                                    AI will auto-detect chapters from the PDF content.
+                                                </p>
                                             ) : (
-                                                <><Upload className="h-4 w-4 mr-1" /> Upload & Parse</>
+                                                <div className="space-y-2">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Select the chapters present in this PDF. AI will only classify into these chapters.
+                                                    </p>
+
+                                                    {/* Selected chapter pills */}
+                                                    {uploadSelectedChapters.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {uploadSelectedChapters.map(ch => (
+                                                                <span
+                                                                    key={ch}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary text-xs"
+                                                                >
+                                                                    {ch}
+                                                                    <button
+                                                                        onClick={() => setUploadSelectedChapters(prev => prev.filter(c => c !== ch))}
+                                                                        className="ml-0.5 hover:text-destructive"
+                                                                    >
+                                                                        ×
+                                                                    </button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dropdown trigger */}
+                                                    <div className="relative" ref={chapterDropdownRef}>
+                                                        <button
+                                                            onClick={() => setShowChapterDropdown(!showChapterDropdown)}
+                                                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg border bg-background text-sm hover:bg-muted/50 transition-colors"
+                                                        >
+                                                            <span className="text-muted-foreground">
+                                                                {uploadSelectedChapters.length === 0
+                                                                    ? 'Select chapters...'
+                                                                    : `${uploadSelectedChapters.length} chapter(s) selected`}
+                                                            </span>
+                                                            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showChapterDropdown ? 'rotate-180' : ''}`} />
+                                                        </button>
+
+                                                        {/* Dropdown menu */}
+                                                        {showChapterDropdown && (
+                                                            <div className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border bg-background shadow-lg">
+                                                                {QUIZ_SUBJECTS.map(subject => {
+                                                                    const isSubjectExpanded = expandedUploadSubjects.has(subject.id);
+                                                                    const selectedInSubject = subject.chapters.filter(c => uploadSelectedChapters.includes(c.name)).length;
+                                                                    return (
+                                                                        <div key={subject.id}>
+                                                                            <button
+                                                                                onClick={() => setExpandedUploadSubjects(prev => {
+                                                                                    const next = new Set(prev);
+                                                                                    if (next.has(subject.id)) next.delete(subject.id);
+                                                                                    else next.add(subject.id);
+                                                                                    return next;
+                                                                                })}
+                                                                                className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold hover:bg-muted/50 transition-colors border-b"
+                                                                            >
+                                                                                <span className="flex items-center gap-2">
+                                                                                    {subject.name}
+                                                                                    {selectedInSubject > 0 && (
+                                                                                        <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-full text-[10px]">
+                                                                                            {selectedInSubject}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </span>
+                                                                                <ChevronRight className={`h-3 w-3 transition-transform ${isSubjectExpanded ? 'rotate-90' : ''}`} />
+                                                                            </button>
+                                                                            {isSubjectExpanded && subject.chapters.map(ch => {
+                                                                                const isChecked = uploadSelectedChapters.includes(ch.name);
+                                                                                return (
+                                                                                    <button
+                                                                                        key={ch.binaryCode}
+                                                                                        onClick={() => {
+                                                                                            setUploadSelectedChapters(prev =>
+                                                                                                isChecked
+                                                                                                    ? prev.filter(c => c !== ch.name)
+                                                                                                    : [...prev, ch.name]
+                                                                                            );
+                                                                                        }}
+                                                                                        className={`w-full text-left px-6 py-1.5 text-xs transition-colors flex items-center gap-2 ${isChecked ? 'bg-primary/5 text-primary font-medium' : 'text-muted-foreground hover:bg-muted/30'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <span className={`flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] ${isChecked ? 'bg-primary border-primary text-white' : 'border-muted-foreground/30'
+                                                                                            }`}>
+                                                                                            {isChecked && '✓'}
+                                                                                        </span>
+                                                                                        {ch.name}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             )}
-                                        </Button>
+                                        </div>
                                     </div>
                                 )}
 
