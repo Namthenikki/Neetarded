@@ -1103,6 +1103,10 @@ def parse_pages_with_hybrid_vision(
                 lines = [l for l in lines if not l.strip().startswith("```")]
                 raw_response = "\n".join(lines)
 
+            # Clean trailing commas in JSON (e.g., `},]`) which break strict JSON parsers
+            raw_response = re.sub(r',\s*]', ']', raw_response)
+            raw_response = re.sub(r',\s*}', '}', raw_response)
+
             parsed = json.loads(raw_response)
             if isinstance(parsed, dict) and "questions" in parsed:
                 parsed = parsed["questions"]
@@ -1348,6 +1352,10 @@ If a question number is NOT on this page, simply don't include it."""
                         lines = raw_resp.split("\n")
                         lines = [l for l in lines if not l.strip().startswith("```")]
                         raw_resp = "\n".join(lines)
+
+                    # Clean trailing commas in JSON (e.g., `},]`) which break strict JSON parsers
+                    raw_resp = re.sub(r',\s*]', ']', raw_resp)
+                    raw_resp = re.sub(r',\s*}', '}', raw_resp)
 
                     parsed = json.loads(raw_resp)
                     if isinstance(parsed, dict) and "questions" in parsed:
@@ -1839,6 +1847,7 @@ def parse_scanned_pages_with_vision(
 
     # Also prepare for image uploads
     page_images: dict[int, bytes] = {}  # page_num -> png bytes
+    page_texts: dict[int, str] = {}  # page_num -> extracted text (for golden dataset)
 
     print(f"  [VISION] Parsing {page_count} pages with GPT-4 Vision...")
 
@@ -1850,6 +1859,8 @@ def parse_scanned_pages_with_vision(
         pixmap = page.get_pixmap(matrix=mat)
         img_bytes = pixmap.tobytes("png")
         page_images[page_num] = img_bytes
+        # Extract page text for golden dataset (may be sparse for scanned PDFs)
+        page_texts[page_num] = page.get_text("text")
 
         # Encode as base64 for API
         b64_image = base64.b64encode(img_bytes).decode("utf-8")
@@ -1890,6 +1901,10 @@ def parse_scanned_pages_with_vision(
                 lines = [l for l in lines if not l.strip().startswith("```")]
                 raw_response = "\n".join(lines)
 
+            # Clean trailing commas in JSON (e.g., `},]`) which break strict JSON parsers
+            raw_response = re.sub(r',\s*]', ']', raw_response)
+            raw_response = re.sub(r',\s*}', '}', raw_response)
+
             parsed = json.loads(raw_response)
             if isinstance(parsed, dict) and "questions" in parsed:
                 parsed = parsed["questions"]
@@ -1911,6 +1926,39 @@ def parse_scanned_pages_with_vision(
 
     doc.close()
 
+    # Upload ALL question page images for golden dataset (vision_parsing task)
+    safe_source = re.sub(r'[^\w\-]', '_', source_paper)
+    uploaded_page_urls = {}  # page_num -> public_url
+    if not dry_run and FIREBASE_STORAGE_BUCKET:
+        from PIL import Image
+        import io
+        print("  [VISION] Uploading ALL question page images for Golden Dataset...")
+        # Upload every page that has questions on it
+        all_question_pages = set(q.get("_source_page", 0) for q in all_questions)
+        try:
+            init_firestore()
+            bucket = fb_storage.bucket()
+            for pg in sorted(all_question_pages):
+                if pg in page_images:
+                    try:
+                        pil_img = Image.open(io.BytesIO(page_images[pg]))
+                        if pil_img.mode in ("RGBA", "P"):
+                            pil_img = pil_img.convert("RGB")
+                        buf = io.BytesIO()
+                        pil_img.save(buf, format="JPEG", quality=70, optimize=True)
+                        compressed_bytes = buf.getvalue()
+
+                        blob_path = f"question-images/{safe_source}/page_{pg + 1}_full.jpg"
+                        blob = bucket.blob(blob_path)
+                        blob.upload_from_string(compressed_bytes, content_type="image/jpeg")
+                        blob.make_public()
+                        uploaded_page_urls[pg] = blob.public_url
+                        print(f"    [PAGE] Uploaded page {pg + 1} full image")
+                    except Exception as e:
+                        print(f"    [PAGE] Failed to upload page {pg + 1}: {e}")
+        except Exception as e:
+            print(f"    [PAGE] Failed to access bucket: {e}")
+
     # Now handle images for questions that reference figures
     # 2nd-pass: dedicated GPT-4V call per figure for precise bounding box
     questions_with_images = [q for q in all_questions if q.get("hasImage")]
@@ -1920,37 +1968,6 @@ def parse_scanned_pages_with_vision(
 
         print(f"  [VISION] {len(questions_with_images)} questions reference figures")
         print(f"  [VISION] Extracting precise figure bounding boxes (2nd pass)...")
-
-        safe_source = re.sub(r'[^\w\-]', '_', source_paper)
-
-        # Upload full page images (for future re-cropping in Review UI)
-        # Track which pages we've already uploaded
-        uploaded_page_urls = {}  # page_num -> public_url
-        if not dry_run and FIREBASE_STORAGE_BUCKET:
-            pages_needed = set(q.get("_source_page", 0) for q in questions_with_images)
-            init_firestore()
-            bucket = fb_storage.bucket()
-            for pg in pages_needed:
-                if pg in page_images:
-                    try:
-                        # Compress the full page image so it loads quickly in the Review UI crop editor
-                        pil_img = Image.open(io.BytesIO(page_images[pg]))
-                        if pil_img.mode in ("RGBA", "P"):
-                            pil_img = pil_img.convert("RGB")
-                        
-                        buf = io.BytesIO()
-                        # Save as JPEG with 70% quality to massively reduce size from ~5MB to ~200KB
-                        pil_img.save(buf, format="JPEG", quality=70, optimize=True)
-                        compressed_bytes = buf.getvalue()
-
-                        blob_path = f"question-images/{safe_source}/page_{pg + 1}_full.jpg"
-                        blob = bucket.blob(blob_path)
-                        blob.upload_from_string(compressed_bytes, content_type="image/jpeg")
-                        blob.make_public()
-                        uploaded_page_urls[pg] = blob.public_url
-                        print(f"    [PAGE] Uploaded page {pg + 1} full image (compressed JPEG)")
-                    except Exception as e:
-                        print(f"    [PAGE] Failed to upload page {pg + 1}: {e}")
 
         FIGURE_BBOX_PROMPT = """You are looking at a scanned exam page. I need you to find the figure/diagram/graph associated with Question {q_num}.
 
@@ -2190,8 +2207,11 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
     # Clean up internal fields AND attach page data for golden dataset
     for q in all_questions:
         pg = q.get("_source_page")
-        if pg is not None and pg in uploaded_page_urls:
-            q["_page_image_url"] = uploaded_page_urls[pg]
+        if pg is not None:
+            if pg in uploaded_page_urls:
+                q["_page_image_url"] = uploaded_page_urls[pg]
+            if pg in page_texts:
+                q["_extracted_page_text"] = page_texts[pg].strip()
 
         q.pop("_source_page", None)
         q.pop("hasImage", None)
@@ -2612,7 +2632,30 @@ def push_to_firestore(
 
         if duplicate_doc_id and duplicate_old_data:
             if duplicate_status == "approved":
-                print(f"    Q{q_num}: Skipping (already approved)")
+                # Backfill vision fields on approved questions without changing status
+                vision_update = {}
+                if "page_image_url" in doc_data and doc_data["page_image_url"]:
+                    vision_update["page_image_url"] = doc_data["page_image_url"]
+                if "extracted_page_text" in doc_data and doc_data["extracted_page_text"]:
+                    vision_update["extracted_page_text"] = doc_data["extracted_page_text"]
+                if "has_option_images" in doc_data:
+                    vision_update["has_option_images"] = doc_data["has_option_images"]
+                if "figure_training" in doc_data and doc_data["figure_training"]:
+                    vision_update["figure_training"] = doc_data["figure_training"]
+
+                if vision_update:
+                    # Only update if approved doc is MISSING these fields
+                    needs_update = any(
+                        key not in duplicate_old_data or not duplicate_old_data.get(key)
+                        for key in vision_update
+                    )
+                    if needs_update:
+                        collection_ref.document(duplicate_doc_id).update(vision_update)
+                        print(f"    Q{q_num}: Backfilled vision fields on approved doc ({', '.join(vision_update.keys())})")
+                    else:
+                        print(f"    Q{q_num}: Skipping (already approved, vision data present)")
+                else:
+                    print(f"    Q{q_num}: Skipping (already approved)")
                 count_skipped += 1
                 continue
             else:
