@@ -29,6 +29,7 @@ interface QuestionData {
     options: QuestionOption[];
     correctOptionId: string;
     explanation?: string;
+    explanationImageUrl?: string;
     imageUrl?: string;
 }
 
@@ -80,9 +81,11 @@ export default function ReviewPage() {
     const [editOptions, setEditOptions] = useState<QuestionOption[]>([]);
     const [editCorrectId, setEditCorrectId] = useState("");
     const [editExplanation, setEditExplanation] = useState("");
+    const [editExplanationImageUrl, setEditExplanationImageUrl] = useState("");
     const [editImageUrl, setEditImageUrl] = useState("");
     const [savingQuestion, setSavingQuestion] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadingExplanationImage, setUploadingExplanationImage] = useState(false);
     const [showCropEditor, setShowCropEditor] = useState(false);
     const [editCorrectionType, setEditCorrectionType] = useState<string>("none");
     const [uploadingOptionId, setUploadingOptionId] = useState<string | null>(null);
@@ -107,6 +110,7 @@ export default function ReviewPage() {
         setEditOptions(qData.options.map(o => ({ ...o })));
         setEditCorrectId(qData.correctOptionId);
         setEditExplanation(qData.explanation || "");
+        setEditExplanationImageUrl(qData.explanationImageUrl || "");
         setEditImageUrl(qData.imageUrl || "");
         setEditingQuestion(true);
     }
@@ -259,6 +263,12 @@ export default function ReviewPage() {
                 delete (updatedJson as any).explanation;
             }
 
+            if (editExplanationImageUrl) {
+                updatedJson.explanationImageUrl = editExplanationImageUrl;
+            } else {
+                delete (updatedJson as any).explanationImageUrl;
+            }
+
             if (editImageUrl) {
                 updatedJson.imageUrl = editImageUrl;
                 (updatedJson as any).hasImage = true;
@@ -337,6 +347,36 @@ export default function ReviewPage() {
             setUploadingImage(false);
             if (e.target) e.target.value = "";
         }
+    }
+
+    async function handleExplanationImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingExplanationImage(true);
+        try {
+            const current = questions[currentIndex];
+            if (!current) return;
+            const safeSource = current.source_paper.replace(/[^\w-]/g, "_");
+            const qNum = current.optimized_json.questionNumber;
+            const ext = file.name.split('.').pop() || 'png';
+
+            const storageRef = ref(storage, `question-images/${safeSource}/q${qNum}_expl_manual_${Date.now()}.${ext}`);
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            setEditExplanationImageUrl(url);
+        } catch (err) {
+            console.error("Error uploading explanation image:", err);
+            alert("Failed to upload explanation image. Make sure you have the correct permissions.");
+        } finally {
+            setUploadingExplanationImage(false);
+            if (e.target) e.target.value = "";
+        }
+    }
+
+    async function handleExplanationImageDelete() {
+        if (!confirm("Are you sure you want to remove this explanation image? You will need to click 'Save Changes' below to apply this permanently.")) return;
+        setEditExplanationImageUrl("");
     }
 
     async function handleOptionImageUpload(e: React.ChangeEvent<HTMLInputElement>, optionIndex: number) {
@@ -805,9 +845,41 @@ export default function ReviewPage() {
                                 value={editExplanation}
                                 onChange={(e) => setEditExplanation(e.target.value)}
                                 rows={3}
-                                placeholder="Add or edit the explanation..."
-                                className="w-full bg-[#0a0a0f] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none resize-y leading-relaxed placeholder:text-gray-700"
+                                placeholder="Add or edit the explanation text..."
+                                className="w-full bg-[#0a0a0f] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:border-violet-500/50 focus:outline-none resize-y leading-relaxed placeholder:text-gray-700 mb-3"
                             />
+
+                            <label className="text-xs text-gray-400 font-semibold mb-2 block">Explanation Image</label>
+                            {editExplanationImageUrl ? (
+                                <div className="p-3 border border-white/10 rounded-xl bg-[#0a0a0f]">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">Image Present</div>
+                                        <button
+                                            onClick={handleExplanationImageDelete}
+                                            className="text-xs px-2 py-1 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                                        >
+                                            🗑 Remove
+                                        </button>
+                                    </div>
+                                    <img src={editExplanationImageUrl} alt="Explanation figure edit" className="max-h-48 rounded border border-white/5 object-contain bg-white/5" />
+                                </div>
+                            ) : (
+                                <div className="p-4 border border-dashed border-white/20 rounded-xl bg-[#0a0a0f] text-center">
+                                    <div className="mb-2 text-sm text-gray-400">No image attached.</div>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <label className="inline-block cursor-pointer px-3 py-1.5 text-xs bg-violet-500/20 text-violet-300 rounded hover:bg-violet-500/30 transition-colors">
+                                            {uploadingExplanationImage ? "Uploading..." : "📁 Upload Explanation Image"}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={handleExplanationImageUpload}
+                                                disabled={uploadingExplanationImage}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Save / Cancel */}
@@ -898,12 +970,19 @@ export default function ReviewPage() {
                         </div>
 
                         {/* Explanation */}
-                        {showAnswer && qData.explanation && (
+                        {showAnswer && (qData.explanation || qData.explanationImageUrl) && (
                             <div className="mt-5 p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
-                                <p className="text-xs text-blue-400 font-semibold mb-1">Explanation</p>
-                                <div className="text-sm text-gray-400 leading-relaxed overflow-hidden">
-                                    <MathText content={qData.explanation} />
-                                </div>
+                                <p className="text-xs text-blue-400 font-semibold mb-2">Explanation</p>
+                                {qData.explanation && (
+                                    <div className="text-sm text-gray-400 leading-relaxed overflow-hidden">
+                                        <MathText content={qData.explanation} />
+                                    </div>
+                                )}
+                                {qData.explanationImageUrl && (
+                                    <div className="mt-3">
+                                        <img src={qData.explanationImageUrl} alt="Explanation Visual" className="max-h-48 rounded border border-white/5 object-contain bg-[#0a0a0f]" />
+                                    </div>
+                                )}
                             </div>
                         )}
 

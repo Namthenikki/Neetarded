@@ -153,7 +153,7 @@ CHAPTER_LOOKUP = {
     ("3C0", "001111"): "Alcohols, Phenols and Ethers",
     ("3C0", "010000"): "Aldehydes, Ketones and Carboxylic Acids",
     ("3C0", "010001"): "Amines",
-    ("3C0", "010010"): "Biomolecules",
+    ("3C0", "010010"): "Bio- molecules",
     ("3C0", "010011"): "Purification and Analysis of Organic Compounds",
     ("3C0", "010100"): "Coordination Compounds",
     ("3C0", "010101"): "The p-Block Elements",
@@ -255,14 +255,16 @@ RULES:
 16. EXTREMELY IMPORTANT for "Statement I / Statement II" and sequential statements (A., B., C.): Insert double newlines between each statement.
 17. NEVER split a single numbered question into multiple questions.
 18. CROSS-PAGE QUESTIONS: If a question clearly continues from a previous page (e.g., the page starts with continuation text, a figure, or options without a new question number), include it as a question entry with the SAME question number it belongs to. Use the question number visible in the continuation or the last question number from context. The text should contain ONLY the continuation part from THIS page.
-19. QUESTION FIGURES: Set `hasImage` to true when a question has an associated figure, diagram, or drawing ON THE PAGE that is essential to understanding the question. This includes:
-   - Circuit diagrams (resistors, batteries, capacitors, etc.)
-   - Physics diagrams (ray diagrams, force diagrams, motion paths, etc.)
-   - Graphs and plots (V-I curves, displacement-time, etc.)
-   - Chemical structures shown IN the question area (not in options)
-   - Biological diagrams (cell structures, anatomical diagrams, etc.)
-   - Any drawn figure referenced by "as shown in the figure" or "shown in the diagram"
-   Set `hasImage` to false ONLY if the question is purely textual with no associated figure.
+19. QUESTION FIGURES -- CRITICAL OWNERSHIP RULES:
+    Set `hasImage` to true ONLY when ALL of the following are true:
+    a) There is a visible figure/diagram/graph on the page.
+    b) The figure is DIRECTLY referenced by THIS question's text (e.g. "as shown in the figure", "study the figure given below", "shown in the diagram").
+    c) The figure is visually positioned WITHIN THIS question's area (between this question number and the next question number).
+    Set `hasImage` to FALSE if:
+    - The question is purely textual (Statement I/II, Match List, etc.) even if a figure from an ADJACENT question is visually nearby on the same page.
+    - A figure exists on the page but belongs to a DIFFERENT question number.
+    - There is no explicit reference to a figure/diagram in THIS question's text.
+    COMMON MISTAKE TO AVOID: If Q168 has a figure and Q173 is on the same page but is a text-only question, Q173 MUST have hasImage=false. Only Q168 gets hasImage=true.
 20. FIGURE-BASED OPTIONS: Set `hasOptionImages` to true when the options are primarily DRAWN/GRAPHICAL content that cannot be meaningfully represented as text. This includes:
    - Chemical structure drawings (benzene rings, molecular structures, even if they have labels like OH, CH₃, COCH₃)
    - Graphs with plotted curves or data
@@ -1543,7 +1545,9 @@ CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra tex
 
         print(f"  [FIGURE] {len(questions_with_images)} questions have figures, cropping...")
 
-        FIGURE_BBOX_PROMPT = """You are looking at an exam page. I need you to find the figure/diagram/graph associated with Question {q_num}.
+        FIGURE_BBOX_PROMPT = """You are looking at an exam page. I need you to find the figure/diagram/graph that BELONGS TO Question {q_num}.
+
+CRITICAL OWNERSHIP RULE: The figure MUST be directly referenced by Question {q_num}'s text (e.g. "as shown in the figure", "study the figure given below"). The figure should be visually located BETWEEN Question {q_num}'s number and the NEXT question's number on the page. If the figure is actually part of a DIFFERENT question (e.g. it sits between Q168 and Q168's options, but you were asked about Q173), you MUST return {{"error": true}}.
 
 Return the EXACT bounding box of JUST the figure/diagram (NOT the question text, NOT the options, ONLY the drawn figure/graph/diagram itself).
 
@@ -1555,7 +1559,7 @@ Return a JSON object with these 4 values as percentages of the page dimensions:
 
 Example: {{"leftPercent": 5, "topPercent": 35, "rightPercent": 45, "bottomPercent": 60}}
 
-CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra text. If no figure is found, return {{"error": true}}."""
+CRITICAL: Return ONLY the JSON object. No markdown, no code fences, no extra text. If the figure does NOT belong to Question {q_num}, or no figure is found, return {{"error": true}}."""
 
         safe_source = re.sub(r'[^\w\-]', '_', os.path.splitext(os.path.basename(pdf_path))[0])
 

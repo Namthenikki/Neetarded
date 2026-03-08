@@ -29,6 +29,14 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface QuestionDoc {
     id: string;
@@ -44,6 +52,7 @@ interface QuestionDoc {
         options: { id: string; text: string; imageUrl?: string }[];
         correctOptionId: string;
         explanation?: string;
+        explanationImageUrl?: string;
         imageUrl?: string;
     };
     has_active_flag?: boolean;
@@ -86,9 +95,83 @@ export default function QuestionBankPage() {
     const [bulkDeleteSource, setBulkDeleteSource] = useState("all");
     const [uploadingOptionId, setUploadingOptionId] = useState<string | null>(null);
 
+    // Upload Answers states
+    const [isUploadAnswersOpen, setIsUploadAnswersOpen] = useState(false);
+    const [answersFile, setAnswersFile] = useState<File | null>(null);
+    const [answersSource, setAnswersSource] = useState("");
+    const [answersDryRun, setAnswersDryRun] = useState(false);
+    const [uploadAnswersStatus, setUploadAnswersStatus] = useState<"idle" | "uploading" | "processing" | "done" | "error">("idle");
+    const [uploadAnswersLogs, setUploadAnswersLogs] = useState<any[]>([]);
+
     // Student flag states
     const [studentFlagId, setStudentFlagId] = useState<string | null>(null);
     const [studentFlagReason, setStudentFlagReason] = useState("");
+
+    const handleUploadAnswers = async () => {
+        if (!answersFile || !answersSource) {
+            toast({ variant: "destructive", title: "Select a PDF and Source" });
+            return;
+        }
+
+        setUploadAnswersStatus("uploading");
+        setUploadAnswersLogs([]);
+
+        const formData = new FormData();
+        formData.append("pdf", answersFile);
+        formData.append("source", answersSource);
+        formData.append("dryRun", String(answersDryRun));
+
+        try {
+            const res = await fetch("/api/ingest-answers", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || "Upload failed");
+            }
+
+            setUploadAnswersStatus("processing");
+
+            if (res.body) {
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || "";
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.type === "log" || data.type === "error") {
+                                    setUploadAnswersLogs(prev => [...prev, data]);
+                                } else if (data.type === "done") {
+                                    setUploadAnswersStatus(data.success ? "done" : "error");
+                                    if (data.success && !answersDryRun) {
+                                        toast({ title: "✅ Answers Uploaded Successfully" });
+                                        // Small delay before reload
+                                        setTimeout(() => window.location.reload(), 2000);
+                                    }
+                                }
+                            } catch (e) { }
+                        }
+                    }
+                }
+            }
+        } catch (e: any) {
+            console.error("Upload answers failed:", e);
+            setUploadAnswersStatus("error");
+            toast({ variant: "destructive", title: "Failed to upload", description: e.message });
+        }
+    };
 
     const handleOptionImageUpload = async (questionDoc: QuestionDoc, optionId: string, file: File) => {
         const uploadKey = `${questionDoc.id}_${optionId}`;
@@ -436,6 +519,20 @@ export default function QuestionBankPage() {
                     <div className="mt-4 pt-4 border-t flex flex-wrap gap-3 items-center justify-between">
                         {user?.role === 'admin' ? (
                             <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs rounded-lg bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                                    onClick={() => {
+                                        setAnswersFile(null);
+                                        setAnswersSource("");
+                                        setUploadAnswersLogs([]);
+                                        setUploadAnswersStatus("idle");
+                                        setIsUploadAnswersOpen(true);
+                                    }}
+                                >
+                                    <Upload className="h-3 w-3 mr-1" /> Answer Keys
+                                </Button>
                                 <Select value={bulkDeleteSource} onValueChange={setBulkDeleteSource}>
                                     <SelectTrigger className="w-[200px] h-8 rounded-lg text-xs">
                                         <SelectValue placeholder="Select PDF to delete" />
@@ -565,6 +662,23 @@ export default function QuestionBankPage() {
                                                             </div>
                                                         </div>
                                                     ))}
+                                                </div>
+                                            )}
+
+                                            {/* Explanation block */}
+                                            {opt?.explanation && (
+                                                <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Explanation for Answer</span>
+                                                    </div>
+                                                    <p className="text-slate-700 text-sm whitespace-pre-wrap">{opt.explanation}</p>
+                                                    {(opt.explanationImageUrl || (q as any).optimized_json?.explanationImageUrl) && (
+                                                        <img
+                                                            src={opt.explanationImageUrl || (q as any).optimized_json?.explanationImageUrl}
+                                                            alt="Explanation Diagram"
+                                                            className="mt-3 max-h-48 w-auto rounded-md border bg-white"
+                                                        />
+                                                    )}
                                                 </div>
                                             )}
 
@@ -748,6 +862,116 @@ export default function QuestionBankPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Upload Answer Keys Dialog */}
+            <Dialog open={isUploadAnswersOpen} onOpenChange={(open) => {
+                if (!open && uploadAnswersStatus === "processing") {
+                    toast({ title: "Upload in progress", description: "Please wait for it to finish." });
+                    return;
+                }
+                setIsUploadAnswersOpen(open);
+            }}>
+                <DialogContent className="sm:max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Upload Answer Keys & Explanations</DialogTitle>
+                        <DialogDescription>
+                            Upload a PDF containing Hints & Solutions. The AI will extract and merge them with existing questions for the selected source paper.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Target Source Paper</label>
+                            <Select value={answersSource} onValueChange={setAnswersSource}>
+                                <SelectTrigger className="w-full rounded-xl">
+                                    <SelectValue placeholder="Select Source Paper" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                    {uniqueSources.map((source) => (
+                                        <SelectItem key={source} value={source}>
+                                            {source}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Solutions PDF</label>
+                            <div className="flex items-center justify-center w-full">
+                                <label className={cn(
+                                    "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors",
+                                    answersFile ? "border-emerald-300 bg-emerald-50/50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
+                                )}>
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <Upload className={cn("w-6 h-6 mb-2", answersFile ? "text-emerald-500" : "text-slate-400")} />
+                                        <p className="mb-1 text-sm text-slate-500 font-medium">
+                                            {answersFile ? answersFile.name : "Click to upload Answers PDF"}
+                                        </p>
+                                        <p className="text-xs text-slate-400">PDFs only</p>
+                                    </div>
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".pdf"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) setAnswersFile(file);
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                            <Checkbox
+                                id="dry-run"
+                                checked={answersDryRun}
+                                onCheckedChange={(checked) => setAnswersDryRun(checked as boolean)}
+                            />
+                            <label htmlFor="dry-run" className="text-sm font-medium leading-none text-amber-800 peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                                Dry Run 🧪
+                            </label>
+                            <p className="text-xs text-amber-700/80 ml-auto">Do not push to DB</p>
+                        </div>
+
+                        {uploadAnswersStatus !== "idle" && (
+                            <div className="mt-4 p-3 bg-slate-900 rounded-xl" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                                {uploadAnswersLogs.map((log, i) => (
+                                    <div key={i} className={cn("text-xs font-mono", log.isError ? "text-red-400" : "text-emerald-400")}>
+                                        {log.text.trim()}
+                                    </div>
+                                ))}
+                                {uploadAnswersStatus === "processing" && (
+                                    <div className="flex items-center gap-2 text-indigo-400 text-xs font-mono mt-2 animate-pulse">
+                                        <Loader2 className="h-3 w-3 animate-spin" /> Processing AI outputs...
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            className="rounded-xl"
+                            disabled={uploadAnswersStatus === "uploading" || uploadAnswersStatus === "processing"}
+                            onClick={() => setIsUploadAnswersOpen(false)}
+                        >
+                            Close
+                        </Button>
+                        <Button
+                            className="rounded-xl"
+                            disabled={!answersFile || !answersSource || uploadAnswersStatus === "uploading" || uploadAnswersStatus === "processing"}
+                            onClick={handleUploadAnswers}
+                        >
+                            {uploadAnswersStatus === "uploading" || uploadAnswersStatus === "processing" ? (
+                                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
+                            ) : (
+                                "Start Extraction"
+                            )}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

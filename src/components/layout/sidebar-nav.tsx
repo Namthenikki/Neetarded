@@ -13,6 +13,7 @@ import {
   Layers,
   Trash2,
   Bell,
+  Flame,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -33,6 +34,7 @@ import { Button } from "../ui/button";
 export const studentNavLinks = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/dashboard/aura", icon: Sparkles, label: "Aura" },
+  { href: "/dashboard/aura-farm", icon: Flame, label: "Aura Farm" },
   { href: "/dashboard/my-library", icon: Library, label: "My Library" },
   { href: "/dashboard/quizzes", icon: BookCopy, label: "My Quizzes" },
   { href: "/dashboard/question-bank", icon: Library, label: "Question Bank" },

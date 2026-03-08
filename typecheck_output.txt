@@ -1,0 +1,32 @@
+﻿
+> nextn@0.1.0 typecheck
+> tsc --noEmit
+
+src/app/api/aura-farm/analyze/route.ts(72,32): error TS2339: Property 'FieldValue' does not exist on type 'Firestore'.
+src/app/api/aura-farm/submit/route.ts(3,37): error TS2307: Cannot find module 'date-fns-tz' or its corresponding type declarations.
+src/app/api/aura-farm/submit/route.ts(98,91): error TS2339: Property 'FieldValue' does not exist on type 'Firestore'.
+src/app/api/aura-farm/submit/route.ts(117,56): error TS2339: Property 'FieldValue' does not exist on type 'Firestore'.
+src/app/api/aura-farm/submit/route.ts(194,34): error TS2339: Property 'FieldValue' does not exist on type 'Firestore'.
+src/app/dashboard/admin/page.tsx(81,101): error TS18047: 'user' is possibly 'null'.
+src/app/dashboard/aura-farm/page.tsx(138,17): error TS2322: Type '{ [x: string]: boolean; }' is not assignable to type 'Record<string, true>'.
+  'string' index signatures are incompatible.
+    Type 'boolean' is not assignable to type 'true'.
+src/app/dashboard/aura-farm/results/page.tsx(124,81): error TS18047: 'sessionId' is possibly 'null'.
+src/app/dashboard/aura-farm/session/page.tsx(11,8): error TS1192: Module '"E:/Neetarded repo/Neetarded/src/lib/render-math"' has no default export.
+src/app/dashboard/aura/page.tsx(118,41): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/aura/page.tsx(130,35): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/aura/page.tsx(143,49): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/aura/page.tsx(143,71): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/aura/page.tsx(144,67): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/aura/page.tsx(147,57): error TS18046: 'chapterData' is of type 'unknown'.
+src/app/dashboard/quizzes/page.tsx(24,80): error TS2339: Property 'uid' does not exist on type 'AppUser'.
+src/app/dashboard/stats/[quizId]/page.tsx(38,11): error TS18047: 'user' is possibly 'null'.
+src/app/quiz/[id]/page.tsx(95,40): error TS18047: 'user' is possibly 'null'.
+src/app/quiz/[id]/page.tsx(95,65): error TS18047: 'user' is possibly 'null'.
+src/app/quiz/[id]/page.tsx(101,47): error TS18047: 'user' is possibly 'null'.
+src/app/quiz/[id]/page.tsx(127,42): error TS18047: 'user' is possibly 'null'.
+src/app/results/[studentId]/page.tsx(107,98): error TS2339: Property 'toFixed' does not exist on type 'ValueType'.
+  Property 'toFixed' does not exist on type 'string'.
+src/components/ui/calendar.tsx(57,9): error TS2353: Object literal may only specify known properties, and 'IconLeft' does not exist in type 'Partial<CustomComponents>'.
+src/components/ui/calendar.tsx(57,22): error TS7031: Binding element 'className' implicitly has an 'any' type.
+src/components/ui/calendar.tsx(60,23): error TS7031: Binding element 'className' implicitly has an 'any' type.

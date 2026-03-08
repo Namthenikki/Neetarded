@@ -108,7 +108,7 @@ export const QUIZ_SUBJECTS: SubjectData[] = [
       { binaryCode: '001111', name: 'Alcohols, Phenols and Ethers' },
       { binaryCode: '010000', name: 'Aldehydes, Ketones and Carboxylic Acids' },
       { binaryCode: '010001', name: 'Amines' },
-      { binaryCode: '010010', name: 'Biomolecules' },
+      { binaryCode: '010010', name: 'Bio- molecules' },
       { binaryCode: '010011', name: 'Purification and Analysis of Organic Compounds' },
       { binaryCode: '010100', name: 'Coordination Compounds' },
       { binaryCode: '010101', name: 'The p-Block Elements' },
@@ -121,4 +121,3 @@ export const QUIZ_SUBJECTS: SubjectData[] = [
 ];
 
 export const getSubjectById = (id: string) => QUIZ_SUBJECTS.find(s => s.id === id);
-    
