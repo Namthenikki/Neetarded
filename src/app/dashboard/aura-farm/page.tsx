@@ -57,6 +57,7 @@ export default function AuraFarmPage() {
     // Day detail popup state
     const [selectedDay, setSelectedDay] = useState<string | null>(null);
     const [dayStats, setDayStats] = useState<any>(null);
+    const [daySessions, setDaySessions] = useState<any[]>([]);
     const [dayStatsLoading, setDayStatsLoading] = useState(false);
 
     // Fetch dynamic chapters that actually have questions
@@ -214,11 +215,13 @@ export default function AuraFarmPage() {
         setSelectedDay(dayStr);
         setDayStatsLoading(true);
         setDayStats(null);
+        setDaySessions([]);
         try {
             const res = await fetch(`/api/aura-farm/day-stats?studentId=${user.studentId}&date=${dayStr}`);
             if (res.ok) {
                 const data = await res.json();
                 setDayStats(data.summary);
+                setDaySessions(data.sessions || []);
             }
         } catch (err) {
             console.error('Failed to fetch day stats:', err);
@@ -576,6 +579,42 @@ export default function AuraFarmPage() {
                                                 );
                                             })}
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* See Analysis Buttons */}
+                                {daySessions.length > 0 && (
+                                    <div className="pt-2">
+                                        {daySessions.length === 1 ? (
+                                            <button
+                                                onClick={() => router.push(`/dashboard/aura-farm/results?sessionId=${daySessions[0].sessionId}`)}
+                                                className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 text-sm transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.35)]"
+                                            >
+                                                <TrendingUp className="w-4 h-4" />
+                                                See Analysis
+                                                <ArrowRight className="w-4 h-4" />
+                                            </button>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <p className="text-xs text-emerald-600 uppercase tracking-wider font-semibold">Session Analysis</p>
+                                                {daySessions.map((sess: any, i: number) => (
+                                                    <button
+                                                        key={sess.sessionId}
+                                                        onClick={() => router.push(`/dashboard/aura-farm/results?sessionId=${sess.sessionId}`)}
+                                                        className="w-full flex items-center justify-between rounded-lg bg-emerald-950/30 border border-emerald-900/20 px-3 py-2.5 hover:bg-emerald-900/30 transition-colors group"
+                                                    >
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="w-5 h-5 rounded-full bg-emerald-800/50 flex items-center justify-center text-[10px] font-bold text-emerald-400 shrink-0">{i + 1}</span>
+                                                            <span className="text-sm text-slate-300 truncate">{sess.chapterName}</span>
+                                                            <span className="text-[10px] text-emerald-600">{sess.totalQuestions} Qs</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 text-emerald-400 text-xs font-semibold shrink-0 group-hover:text-emerald-300">
+                                                            Analysis <ArrowRight className="w-3 h-3" />
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
