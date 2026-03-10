@@ -140,16 +140,18 @@ export async function POST(req: NextRequest) {
         dailyDots[todayStr] = newDayCount;
 
         // Check if we just crossed the 10-question threshold for streak
+        // IMPORTANT: lastActivityDate tracks when streak was LAST UPDATED (crossed 10 Qs),
+        // NOT when the user was last active. This prevents premature marking.
         const streakAlreadyUpdatedToday = lastActivityDate === todayStr;
         const justCrossed10 = previousDayCount < 10 && newDayCount >= 10;
 
         if (justCrossed10 && !streakAlreadyUpdatedToday) {
             // First time crossing 10 today — update streak
             if (lastActivityDate) {
-                const lastDate = new Date(lastActivityDate);
-                const todayDate = new Date(todayStr);
-                const diffTime = Math.abs(todayDate.getTime() - lastDate.getTime());
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const lastDate = new Date(lastActivityDate + 'T00:00:00+05:30');
+                const todayDate = new Date(todayStr + 'T00:00:00+05:30');
+                const diffTime = todayDate.getTime() - lastDate.getTime();
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
                 if (diffDays === 1) {
                     currentStreak++;
@@ -171,10 +173,11 @@ export async function POST(req: NextRequest) {
                 dailyDots
             };
         } else {
-            // Just update the dailyDots count (and lastActivityDate if streak already counted)
+            // Just update the dailyDots count.
+            // Do NOT update lastActivityDate here — it should only be set
+            // when the 10-question threshold is crossed to track streak continuity.
             userStatsUpdates = {
-                dailyDots,
-                ...(streakAlreadyUpdatedToday ? {} : { lastActivityDate: todayStr })
+                dailyDots
             };
         }
 

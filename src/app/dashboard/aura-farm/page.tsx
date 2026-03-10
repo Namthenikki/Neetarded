@@ -99,16 +99,19 @@ export default function AuraFarmPage() {
                     }
                     const data = { ...rawData, dailyDots: dots } as UserStats;
 
-                    const now = new Date();
-                    const nowIstDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+                    // Get today's date string in IST for consistent date-only comparison
+                    const nowForCheck = new Date();
+                    const todayCheckStr = nowForCheck.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
                     let needsUpdate = false;
                     let { streakFreezeAvailable, streakFreezeUsedThisWeek, lastActivityDate, currentStreak } = data;
 
                     if (data.lastActivityDate && currentStreak > 0) {
-                        const lastDate = new Date(data.lastActivityDate);
-                        const diffTime = Math.abs(nowIstDate.getTime() - lastDate.getTime());
-                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                        // Use date-only comparison to avoid time-of-day drift
+                        const lastDate = new Date(data.lastActivityDate + 'T00:00:00+05:30');
+                        const todayDate = new Date(todayCheckStr + 'T00:00:00+05:30');
+                        const diffTime = todayDate.getTime() - lastDate.getTime();
+                        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
                         if (diffDays === 2 && data.streakFreezeAvailable) {
                             setShowFreezePrompt(true);
