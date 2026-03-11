@@ -263,7 +263,7 @@ export default function QuizPage() {
     flatQuestions.forEach(q => {
       const sectionId = q.sectionId;
       const sectionName = q.sectionName;
-      const chapterCode = q.chapterBinaryCode;
+      const chapterCode = `${q.sectionId}-${q.chapterBinaryCode}`;
       const chapterName = q.chapterName;
 
       if (!deepAnalysis.subjects[sectionId]) {
