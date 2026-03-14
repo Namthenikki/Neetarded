@@ -129,7 +129,11 @@ export default function CreateQuizPage() {
 
   // Core quiz data
   const [title, setTitle] = useState("");
-  const [settings, setSettings] = useState<QuizSettings>({
+  const [settings, setSettings] = useState<{
+    duration: number | '';
+    positiveMarks: number | '';
+    negativeMarks: number | '';
+  }>({
     duration: 180,
     positiveMarks: 4,
     negativeMarks: -1,
@@ -274,7 +278,11 @@ export default function CreateQuizPage() {
 
       const quizPayload = {
         title,
-        settings,
+        settings: {
+          duration: Number(settings.duration) || 180,
+          positiveMarks: Number(settings.positiveMarks) || 4,
+          negativeMarks: Number(settings.negativeMarks) > 0 ? -Number(settings.negativeMarks) : (Number(settings.negativeMarks) || -1),
+        },
         structure,
         isPublished: false,
         createdAt: serverTimestamp(),
@@ -419,7 +427,7 @@ export default function CreateQuizPage() {
                   onChange={(e) =>
                     setSettings({
                       ...settings,
-                      duration: parseInt(e.target.value) || 0,
+                      duration: e.target.value === '' ? '' : Number(e.target.value),
                     })
                   }
                   className="text-lg"
@@ -434,7 +442,7 @@ export default function CreateQuizPage() {
                   onChange={(e) =>
                     setSettings({
                       ...settings,
-                      positiveMarks: parseInt(e.target.value) || 0,
+                      positiveMarks: e.target.value === '' ? '' : Number(e.target.value),
                     })
                   }
                   className="text-lg"
@@ -448,13 +456,17 @@ export default function CreateQuizPage() {
                     id="negative-marks"
                     type="number"
                     min="0"
-                    value={Math.abs(settings.negativeMarks)}
+                    value={settings.negativeMarks === '' ? '' : Math.abs(Number(settings.negativeMarks))}
                     onChange={(e) => {
-                      const val = parseInt(e.target.value) || 0;
-                      setSettings({
-                        ...settings,
-                        negativeMarks: val > 0 ? -val : 0,
-                      });
+                      if (e.target.value === '') {
+                        setSettings({ ...settings, negativeMarks: '' });
+                      } else {
+                        const val = Number(e.target.value);
+                        setSettings({
+                          ...settings,
+                          negativeMarks: val > 0 ? -val : val,
+                        });
+                      }
                     }}
                     className="pl-7 text-lg"
                   />

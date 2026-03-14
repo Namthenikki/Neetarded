@@ -44,10 +44,10 @@ export default function CustomQuizPage() {
 
     // Quiz settings
     const [title, setTitle] = useState("");
-    const [questionCount, setQuestionCount] = useState(20);
-    const [duration, setDuration] = useState(60);
-    const [positiveMarks, setPositiveMarks] = useState(4);
-    const [negativeMarks, setNegativeMarks] = useState(1);
+    const [questionCount, setQuestionCount] = useState<number | "">(20);
+    const [duration, setDuration] = useState<number | "">(60);
+    const [positiveMarks, setPositiveMarks] = useState<number | "">(4);
+    const [negativeMarks, setNegativeMarks] = useState<number | "">(1);
 
     // Chapter selection
     const [selectedChapters, setSelectedChapters] = useState<SelectedChapter[]>([]);
@@ -191,7 +191,7 @@ export default function CustomQuizPage() {
         return selectedSources.reduce((sum, s) => sum + (sourceAllocations[s] || 0), 0);
     }, [selectedSources, sourceAllocations]);
 
-    const expectedTotal = distributionMode === 'percentage' ? 100 : questionCount;
+    const expectedTotal = distributionMode === 'percentage' ? 100 : (Number(questionCount) || 0);
     // When using chapter-level allocations, the total is always valid (user picks exactly what they want)
     const hasChapterAllocations = Object.values(sourceChapterAllocations).some(
         chAlloc => Object.values(chAlloc).some(v => v > 0)
@@ -207,8 +207,9 @@ export default function CustomQuizPage() {
             selectedSources.forEach((s, i) => { alloc[s] = each + (i === 0 ? remainder : 0); });
             setSourceAllocations(alloc);
         } else {
-            const each = Math.floor(questionCount / selectedSources.length);
-            const remainder = questionCount - each * selectedSources.length;
+            const numCount = Number(questionCount) || 0;
+            const each = Math.floor(numCount / selectedSources.length);
+            const remainder = numCount - each * selectedSources.length;
             const alloc: Record<string, number> = {};
             selectedSources.forEach((s, i) => { alloc[s] = each + (i === 0 ? remainder : 0); });
             setSourceAllocations(alloc);
@@ -438,7 +439,7 @@ export default function CustomQuizPage() {
                         // Source-level allocation only (no chapter breakdown)
                         const val = sourceAllocations[src] || 0;
                         const target = distributionMode === 'percentage'
-                            ? Math.round(questionCount * val / 100)
+                            ? Math.round((Number(questionCount) || 0) * val / 100)
                             : val;
                         pool.sort(() => Math.random() - 0.5);
                         selected.push(...pool.slice(0, target));
@@ -450,7 +451,7 @@ export default function CustomQuizPage() {
             } else {
                 // Original behavior: global shuffle and pick
                 const shuffled = allQuestions.sort(() => Math.random() - 0.5);
-                selected = shuffled.slice(0, Math.min(questionCount, shuffled.length));
+                selected = shuffled.slice(0, Math.min(Number(questionCount) || 0, shuffled.length));
             }
 
             // Build quiz structure grouped by section -> chapter
@@ -523,9 +524,9 @@ export default function CustomQuizPage() {
             const quizPayload = {
                 title,
                 settings: {
-                    duration: duration || 60,
-                    positiveMarks: positiveMarks || 4,
-                    negativeMarks: negativeMarks > 0 ? -negativeMarks : negativeMarks,
+                    duration: Number(duration) || 60,
+                    positiveMarks: Number(positiveMarks) || 4,
+                    negativeMarks: Number(negativeMarks) > 0 ? -Number(negativeMarks) : Number(negativeMarks),
                 },
                 structure,
                 isPublished: false,
@@ -1020,7 +1021,7 @@ export default function CustomQuizPage() {
                                     min={1}
                                     max={200}
                                     value={questionCount}
-                                    onChange={e => setQuestionCount(parseInt(e.target.value) || 20)}
+                                    onChange={e => setQuestionCount(e.target.value === '' ? '' : Number(e.target.value))}
                                 />
                             </div>
                             <div>
@@ -1029,7 +1030,7 @@ export default function CustomQuizPage() {
                                     id="c-duration"
                                     type="number"
                                     value={duration}
-                                    onChange={e => setDuration(parseInt(e.target.value) || 60)}
+                                    onChange={e => setDuration(e.target.value === '' ? '' : Number(e.target.value))}
                                 />
                             </div>
                             <div>
@@ -1038,7 +1039,7 @@ export default function CustomQuizPage() {
                                     id="c-pos"
                                     type="number"
                                     value={positiveMarks}
-                                    onChange={e => setPositiveMarks(parseInt(e.target.value) || 4)}
+                                    onChange={e => setPositiveMarks(e.target.value === '' ? '' : Number(e.target.value))}
                                 />
                             </div>
                             <div>
@@ -1050,7 +1051,7 @@ export default function CustomQuizPage() {
                                         type="number"
                                         min={0}
                                         value={negativeMarks}
-                                        onChange={e => setNegativeMarks(parseInt(e.target.value) || 0)}
+                                        onChange={e => setNegativeMarks(e.target.value === '' ? '' : Number(e.target.value))}
                                         className="pl-7"
                                     />
                                 </div>
